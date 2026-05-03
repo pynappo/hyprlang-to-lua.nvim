@@ -1,62 +1,6 @@
+local pretty = require("hyprlang-to-lua.luagen.pretty")
+local tolua = pretty.tolua
 local M = {}
-
----@param str string
----@return string lua_formatted_string
-local toluastring = function(str)
-  if not str:find([["]], 1, true) then
-    return ([["%s"]]):format(str)
-  elseif not str:find([[']], 1, true) then
-    return ("'%s'"):format(str)
-  elseif not str:find("[%[%]]") then
-    return ("[[%s]]"):format(str)
-  end
-  error("TODO: Couldn't represent str " .. str .. " without escaping, file an issue")
-end
-
----Based on StyLua opts, adjusted to the settings on the hyprland wiki.
----@class hyprtolua.FormatOpts
-M.default_format_opts = {
-  syntax = "All",
-  column_width = 80, -- Adjusted to 80
-  line_endings = "Unix",
-  ---@type "Spaces"|"Tabs"
-  indent_type = "Spaces", -- Spaces used on wiki
-  indent_width = 4,
-  quote_style = "AutoPreferDouble",
-  call_parentheses = "Always",
-  collapse_simple_statement = "Never",
-  space_after_function_names = "Never",
-  block_newline_gaps = "Never",
-
-  -- sort_requires = false, -- not bothering with
-}
-
----@param format_opts hyprtolua.FormatOpts
----@param level integer
----@return string
-local indent = function(format_opts, level)
-  if format_opts.indent_type == "Spaces" then
-    return (" "):rep(format_opts.indent_width):rep(level)
-  elseif format_opts.indent_type == "Tabs" then
-    return ("\t"):rep(level)
-  end
-  error("Could not determine indent")
-end
-
----@param val any
----@param opts hyprtolua.FormatOpts?
----@param idt string?
-local inspect = function(val, opts, idt)
-  opts = opts or M.default_format_opts
-  local indent_len = idt and #idt or 0
-  local estimated_length = #vim.inspect(val) + indent_len
-  local oneliner = estimated_length < opts.column_width
-  return vim.inspect(
-    val,
-    -- If the estimated length is lower than the column width, try creating a one-liner.
-    { indent = oneliner and " " or indent(opts, 1), newline = oneliner and "" or "\n" }
-  )
-end
 
 ---@param irs hyprtolua.ir.Exec[]
 ---@param variant hyprtolua.ir.ExecVariant
@@ -66,8 +10,8 @@ M.exec_to_lua = function(irs, variant, format_opts)
   local exec_cmd_lines = {}
   for _, ir in ipairs(irs) do
     exec_cmd_lines[#exec_cmd_lines + 1] = ("%shl.exec_cmd(%s)"):format(
-      indent(format_opts, 1),
-      toluastring(ir.command)
+      pretty.indent(1),
+      tolua(ir.command)
     )
   end
 
@@ -86,7 +30,7 @@ M.exec_to_lua = function(irs, variant, format_opts)
 hl.on(%s, function()
 %s
 end)
-]]):format(toluastring(event), exec_cmds_str)
+]]):format(tolua(event), exec_cmds_str)
 end
 
 ---@param config_ir hyprtolua.ir.Configuration
@@ -142,7 +86,6 @@ local function section_to_lua_table(ir)
     elseif part.keyword then
       ---@cast part hyprtolua.ir.Keyword
       tbl[part.keyword] = part.params
-      error("TODO")
     elseif part.name then
       ---@cast part hyprtolua.ir.Assignment
       tbl[part.name] = val_to_lua(part.value)
@@ -151,8 +94,7 @@ local function section_to_lua_table(ir)
   return tbl
 end
 ---@param ir hyprtolua.ir.Section
----@param format_opts hyprtolua.FormatOpts
-M.section_to_lua_code = function(ir, format_opts)
+M.section_to_lua_code = function(ir)
   if ir.section_name == "monitorv2" then
     ---@type HL.MonitorSpec
     local monitor_opts = section_to_lua_table(ir)
@@ -160,12 +102,12 @@ M.section_to_lua_code = function(ir, format_opts)
       -- Convert to a string
       monitor_opts.scale = tostring(monitor_opts.scale)
     end
-    return ([[hl.monitor(%s)]]):format(inspect(monitor_opts))
+    return ([[hl.monitor(%s)]]):format(tolua(monitor_opts))
   elseif ir.section_name == "windowrule" then
-    return ([[hl.window_rule(%s)]]):format(vim.inspect(section_to_lua_table(ir)))
+    return ([[hl.window_rule(%s)]]):format(tolua(section_to_lua_table(ir)))
   else
     return ([[hl.config(%s)]]):format({
-      [ir.section_name] = vim.inspect(section_to_lua_table(ir)),
+      [ir.section_name] = tolua(section_to_lua_table(ir)),
     })
   end
 end
@@ -207,17 +149,14 @@ end
 M.keyword_to_lua_code = function(ir)
   local keyword = ir.keyword
   if keyword == "env" then
-    return ("hl.env(%s, %s)"):format(
-      toluastring(tostring(ir.params[1])),
-      toluastring(tostring(ir.params[2]))
-    )
+    return ("hl.env(%s, %s)"):format(tolua(tostring(ir.params[1])), tolua(tostring(ir.params[2])))
   elseif keyword == "workspace" then
     local ws_args = {
       workspace = tostring(ir.params[1]),
     }
+    local ws_argtables = {}
     for i = 2, #ir.params do
       local param = ir.params[i]
-      local ws_argtables = {}
       if type(param) == "string" then
         local param_in_lua = param_string_to_val(param)
         if type(param_in_lua) == "table" then
@@ -228,10 +167,10 @@ M.keyword_to_lua_code = function(ir)
       end
       ws_args = vim.tbl_deep_extend("force", ws_args, unpack(ws_argtables))
     end
-    return ("hl.workspace_rule(%s)"):format(inspect(ws_args))
+    return ("hl.workspace_rule(%s)"):format(pretty.generate_with_parts(ws_args, ws_argtables))
   elseif keyword == "windowrule" then
   end
-  error("TODO" .. vim.inspect(ir))
+  error("TODO" .. tolua(ir))
 end
 
 return M

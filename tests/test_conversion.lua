@@ -20,11 +20,11 @@ T["works"] = function()
   utils.expect_lines_match({
     [[
 hl.monitor({
-	output = "DP-3",
-	mode = "2560x1440@170",
-	position = "-2560x0",
-	scale = "1",
-	vrr = 3,
+  output = "DP-3",
+  mode = "2560x1440@170",
+  position = "-2560x0",
+  scale = "1",
+  vrr = 3,
 })]],
     [[
 hl.monitor({
