@@ -1,0 +1,18 @@
+[tasks."deps:mini"]
+description = "Download 'mini.nvim' for the testing module"
+outputs = ["deps/mini.nvim"]
+run = """
+[ -e deps ] && exit 0
+mkdir -p deps
+git clone --filter=blob:none https://github.com/nvim-mini/mini.nvim deps/mini.nvim
+"""
+
+[tasks.test]
+description = "Run all test files"
+depends = ["deps:mini"]
+run = 'nvim --headless --noplugin -u ./scripts/minimal_init.lua -c "lua MiniTest.run()"'
+
+[tasks.test_file]
+description = "Run test from file at $FILE environment variable"
+depends = ["deps:mini"]
+run = 'nvim --headless --noplugin -u ./scripts/minimal_init.lua -c "lua MiniTest.run_file(\"$FILE\")"'
