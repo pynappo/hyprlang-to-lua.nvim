@@ -21,7 +21,8 @@ M.expect_lines_match = MiniTest.new_expectation("line matching (with better debu
   return all_matched
 end, function(expected, actual)
   local mismatches = {}
-  for i, expected_line in ipairs(expected) do
+  for i = 1, math.max(#expected, #actual) do
+    local expected_line = expected[i]
     local actual_line = actual[i]
     if expected_line ~= actual_line then
       mismatches[#mismatches + 1] = ([[%s

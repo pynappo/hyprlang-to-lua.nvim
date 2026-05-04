@@ -186,14 +186,14 @@ local function tbl_tolua(tbl, keys, opts, indent0)
     local v = tbl[k]
     local ktype = type(k)
     if ktype == "string" then
-      lines[#lines + 1] = ("%s = %s,"):format(tokeystring(k), M.tolua(v, opts, indent1))
+      lines[#lines + 1] = ("%s = %s,"):format(tokeystring(k), M.toluacode(v, opts, indent1))
     elseif ktype == "number" then
-      lines[#lines + 1] = ("%s%s,"):format(indent1, M.tolua(v, opts, indent1))
+      lines[#lines + 1] = ("%s%s,"):format(indent1, M.toluacode(v, opts, indent1))
     else
       error("TODO: other key type printing")
     end
   end
-  lines[#lines + 1] = indent0 .. "}"
+  lines[#lines + 1] = "}"
 
   --post process
   local endcol = #indent0
@@ -206,6 +206,7 @@ local function tbl_tolua(tbl, keys, opts, indent0)
     for i = 2, #lines - 1 do
       lines[i] = indent1 .. lines[i]
     end
+    lines[#lines] = indent0 .. lines[#lines]
   else
     -- remove comma from last line
     if #lines > 2 then
@@ -222,7 +223,7 @@ end
 ---@param opts hyprtolua.FormatOpts?
 ---@param indent0 string?
 ---@return string
-M.tolua = function(val, opts, indent0)
+M.toluacode = function(val, opts, indent0)
   local valtype = type(val)
   if valtype == "string" then
     return M.luaquote(val)
@@ -234,7 +235,7 @@ M.tolua = function(val, opts, indent0)
   ---@type metatable
   local mt = getmetatable(val)
   if mt and mt.__tostring then
-    return tostring(val)
+    return M.luaquote(tostring(val))
   end
 
   opts = opts or M.opts
@@ -244,35 +245,29 @@ M.tolua = function(val, opts, indent0)
   return tbl_tolua(val, keys, opts, indent0)
 end
 
----Creates a pretty string representation of the merged table that attempts to respect the order of its composite parts
----@param merged table
----@param parts table[] the parts used to create the merged table (i.e. via vim.tbl_deep_extend)
+---Creates a pretty string representation of the table that lists the keys in order of the keyorder.
+---@generic K
+---@param t table<K, any>
+---@param keyorder K[]
 ---@param opts hyprtolua.FormatOpts?
 ---@param indent0 string?
 ---@return string pretty-print
-M.generate_with_parts = function(merged, parts, opts, indent0)
-  local part_keys_seen = {}
-  for _, part in ipairs(parts) do
-    local partkeys = vim.tbl_keys(part)
-    table.sort(partkeys, sorted_strings_then_numbers)
-    for _, k in ipairs(partkeys) do
-      if not part_keys_seen[k] then
-        part_keys_seen[#part_keys_seen + 1] = k
-        part_keys_seen[k] = true
-      end
-    end
+M.tbl_toluacode = function(t, keyorder, opts, indent0)
+  local keys = {}
+  for _, key in ipairs(keyorder) do
+    keys[key] = true
   end
 
   local original_keys = {}
-  for k in pairs(merged) do
-    if not part_keys_seen[k] then
+  for k in pairs(t) do
+    if not keys[k] then
       original_keys[#original_keys + 1] = k
     end
   end
   table.sort(original_keys, sorted_strings_then_numbers)
   opts = opts or M.opts
   indent0 = indent0 or ""
-  return tbl_tolua(merged, vim.list_extend(original_keys, part_keys_seen), opts, indent0)
+  return tbl_tolua(t, vim.list_extend(original_keys, keyorder), opts, indent0)
 end
 
 return M

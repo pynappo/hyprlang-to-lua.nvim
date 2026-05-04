@@ -1,5 +1,5 @@
 local pretty = require("hyprlang-to-lua.luagen.pretty")
-local tolua = pretty.tolua
+local toluacode = pretty.toluacode
 local M = {}
 
 ---@param irs hyprtolua.ir.Exec[]
@@ -11,7 +11,7 @@ M.exec_to_lua = function(irs, variant, format_opts)
   for _, ir in ipairs(irs) do
     exec_cmd_lines[#exec_cmd_lines + 1] = ("%shl.exec_cmd(%s)"):format(
       pretty.indent(1),
-      tolua(ir.command)
+      toluacode(ir.command)
     )
   end
 
@@ -30,7 +30,7 @@ M.exec_to_lua = function(irs, variant, format_opts)
 hl.on(%s, function()
 %s
 end)
-]]):format(tolua(event), exec_cmds_str)
+]]):format(toluacode(event), exec_cmds_str)
 end
 
 ---@param config_ir hyprtolua.ir.Configuration
@@ -63,69 +63,73 @@ M.config_to_lua = function(config_ir, format_opts)
   return parts
 end
 
----@param ir hyprtolua.ir.Value
-local val_to_lua = function(ir)
-  if type(ir) ~= "table" then
-    return ir
-  end
-  ---@type metatable
-  local mt = getmetatable(ir)
-  if mt and mt.__tostring then
-    return tostring(ir)
-  end
-  return ir
-end
-
 ---@param ir hyprtolua.ir.Section
-local function section_to_lua_table(ir)
+---@return table section_lua
+---@return any[] keys
+local function section_to_tbl_and_keys(ir)
   local tbl = {}
+  local parts = {}
+  local keys = {}
   for _, part in ipairs(ir) do
+    local k, v
     if part.section_name then
       ---@cast part hyprtolua.ir.Section
-      tbl[part.section_name] = section_to_lua_table(part)
+      k = part.section_name
+      v, _ = section_to_tbl_and_keys(part)
     elseif part.keyword then
       ---@cast part hyprtolua.ir.Keyword
-      tbl[part.keyword] = part.params
+      k = part.keyword
+      v = part.params
     elseif part.name then
       ---@cast part hyprtolua.ir.Assignment
-      tbl[part.name] = val_to_lua(part.value)
+      k = part.name
+      v = part.value
+    else
+      error("TODO: unparsed ir in section: " .. pretty.toluacode(ir))
     end
+    parts[#parts + 1] = { [k] = v }
+    keys[#keys + 1] = k
   end
-  return tbl
+  tbl = vim.tbl_deep_extend("force", {}, unpack(parts))
+  return tbl, keys
 end
 ---@param ir hyprtolua.ir.Section
 M.section_to_lua_code = function(ir)
   if ir.section_name == "monitorv2" then
     ---@type HL.MonitorSpec
-    local monitor_opts = section_to_lua_table(ir)
+    local monitor_opts, keys = section_to_tbl_and_keys(ir)
     if monitor_opts.scale then
       -- Convert to a string
       monitor_opts.scale = tostring(monitor_opts.scale)
     end
-    return ([[hl.monitor(%s)]]):format(tolua(monitor_opts))
+    return ([[hl.monitor(%s)]]):format(pretty.tbl_toluacode(monitor_opts, keys))
   elseif ir.section_name == "windowrule" then
-    return ([[hl.window_rule(%s)]]):format(tolua(section_to_lua_table(ir)))
+    local kvs, keys = section_to_tbl_and_keys(ir)
+    local windowrule_opts = vim.tbl_deep_extend("force", {}, unpack(kvs))
+    return ([[hl.window_rule(%s)]]):format(pretty.tbl_toluacode(windowrule_opts, keys))
   else
     return ([[hl.config(%s)]]):format({
-      [ir.section_name] = tolua(section_to_lua_table(ir)),
+      [ir.section_name] = toluacode(section_to_tbl_and_keys(ir)),
     })
   end
 end
 
 ---@param param_str string
 ---@return table|string val
+---@return string key
 local param_string_to_val = function(param_str)
   local space_idx = param_str:find(" ", 1, true)
   local colon_idx = param_str:find(":", 1, true)
   -- forms are either key:value, key value, or subkey1:subkey2 value
   if not space_idx then
-    if colon_idx then
-      local key = param_str:sub(1, colon_idx - 1)
-      local value = param_str:sub(colon_idx + 1)
-      return { [key] = value }
+    if not colon_idx then
+      error("Could not parse parameter to value" .. param_str)
     end
-    return param_str
+    local key = param_str:sub(1, colon_idx - 1)
+    local value = param_str:sub(colon_idx + 1)
+    return value, key
   end
+
   local key = param_str:sub(1, space_idx - 1)
   colon_idx = key:find(":", 1, true)
   local value = param_str:sub(space_idx + 1)
@@ -133,15 +137,10 @@ local param_string_to_val = function(param_str)
     local subkey1 = key:sub(1, colon_idx - 1)
     local subkey2 = key:sub(colon_idx + 1)
     return {
-      [subkey1] = {
-        [subkey2] = value,
-      },
-    }
-  else
-    return {
-      [key] = value,
-    }
+      [subkey2] = value,
+    }, subkey1
   end
+  return value, key
 end
 
 ---@param ir hyprtolua.ir.Keyword
@@ -149,28 +148,36 @@ end
 M.keyword_to_lua_code = function(ir)
   local keyword = ir.keyword
   if keyword == "env" then
-    return ("hl.env(%s, %s)"):format(tolua(tostring(ir.params[1])), tolua(tostring(ir.params[2])))
+    return ("hl.env(%s, %s)"):format(
+      toluacode(tostring(ir.params[1])),
+      toluacode(tostring(ir.params[2]))
+    )
   elseif keyword == "workspace" then
-    local ws_args = {
+    ---@type HL.WorkspaceRuleSpec
+    local ws_rule = {
       workspace = tostring(ir.params[1]),
     }
-    local ws_argtables = {}
+    local keys = {}
     for i = 2, #ir.params do
       local param = ir.params[i]
       if type(param) == "string" then
-        local param_in_lua = param_string_to_val(param)
-        if type(param_in_lua) == "table" then
-          ws_argtables[#ws_argtables + 1] = param_in_lua
+        local val, key = param_string_to_val(param)
+        keys[#keys + 1] = key
+        if ws_rule[key] == nil then
+          ---@diagnostic disable-next-line: assign-type-mismatch
+          ws_rule[key] = val
+        elseif type(val) == "table" then
+          ---@diagnostic disable-next-line: assign-type-mismatch
+          ws_rule[key] = vim.tbl_deep_extend(ws_rule[key], val)
         else
-          error("Could not generate lua value of param: " .. param)
+          error("Could not parse value as ")
         end
       end
-      ws_args = vim.tbl_deep_extend("force", ws_args, unpack(ws_argtables))
     end
-    return ("hl.workspace_rule(%s)"):format(pretty.generate_with_parts(ws_args, ws_argtables))
+    return ("hl.workspace_rule(%s)"):format(pretty.tbl_toluacode(ws_rule, keys))
   elseif keyword == "windowrule" then
   end
-  error("TODO" .. tolua(ir))
+  error("TODO" .. toluacode(ir))
 end
 
 return M

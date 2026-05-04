@@ -690,10 +690,9 @@ end
 ---@param src string
 ---@return hyprtolua.ir.Comment
 M.parse_comment = function(node, src)
-  local comment_text_child = assert(node:child(0))
   ---@type hyprtolua.ir.Comment
   local ir = {
-    comment = get_node_text(comment_text_child, src),
+    comment = get_node_text(node, src):sub(2),
   }
   return ir
 end
