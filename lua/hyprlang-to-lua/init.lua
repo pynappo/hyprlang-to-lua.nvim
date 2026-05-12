@@ -1,6 +1,7 @@
 local ir_parser = require("hyprlang-to-lua.ir_parser")
 local luagen = require("hyprlang-to-lua.luagen")
 local utils = require("hyprlang-to-lua.utils")
+local optimize = require("hyprlang-to-lua.luagen.optimize")
 local M = {}
 
 ---@param hyprlang_text string
@@ -15,7 +16,7 @@ M.convert = function(hyprlang_text)
   local configuration_root = tree[1]:root() -- configuration
   local config_ir = ir_parser.parse_configuration(configuration_root, hyprlang_text)
   local chunks = luagen.config_toluacode(config_ir)
-  chunks = luagen.optimize(chunks)
+  chunks = optimize.optimize(chunks)
   local date = os.date("%Y-%m-%dT%H:%M:%S")
 
   local lines = {

@@ -1,6 +1,6 @@
 local pretty = require("hyprlang-to-lua.luagen.pretty")
 local utils = require("hyprlang-to-lua.utils")
-local normalize = require("hyprlang-to-lua.luagen.normalize")
+local migrate = require("hyprlang-to-lua.luagen.migrate")
 local toluacode = pretty.toluacode
 local M = {}
 
@@ -76,12 +76,14 @@ local function parse_submap(ir, last_submap)
 
   return not is_reset_submap and submap or nil, table.concat(chunks, "\n")
 end
+
+local chunks = {}
 ---@param config_ir hyprtolua.ir.Configuration
 ---@return string[] chunks
 ---@nodiscard
 M.config_toluacode = function(config_ir)
   ---@type string[]
-  local chunks = {}
+  chunks = {}
   ---@type string?
   local submap = nil
   for i = 1, #config_ir do
@@ -114,7 +116,19 @@ M.config_toluacode = function(config_ir)
       ---@cast ir hyprtolua.ir.Section
       chunks[#chunks + 1] = M.section_toluacode(ir)
     elseif ir.source then
-      chunks[#chunks + 1] = ("require(%s)"):format(toluacode(ir.source):gsub("%.conf$", ".lua"))
+      local path_to_source = vim.fs.normalize(ir.source)
+      local require_path
+      if vim.startswith(path_to_source, utils.config_hypr_path .. "/") then
+        local path_from_config_dir = path_to_source:sub(#utils.config_hypr_path + 2)
+        require_path = path_from_config_dir:gsub("/", "."):gsub("%.conf$", "")
+      end
+      if require_path then
+        chunks[#chunks + 1] = ("require(%s)"):format(toluacode(require_path))
+      else
+        chunks[#chunks + 1] = ("-- require(%s) -- hyprlang-to-lua: could not convert this path to require() equivalent"):format(
+          toluacode(ir.source)
+        )
+      end
     end
   end
   if submap then
@@ -158,10 +172,16 @@ local function section_to_tbl_and_keys(section_ir)
       ---@cast ir hyprtolua.ir.Keyword
       k = ir.keyword
       local first_param = ir.params[1]
-      v = first_param ~= nil and first_param or ir.params.raw
+      if first_param ~= nil then
+        v = first_param
+      else
+        first_param = ir.params.raw
+      end
     else
       error("TODO: unparsed ir in section: " .. pretty.toluacode(ir))
     end
+
+    k = utils.tosnakecase(k)
 
     local part = {}
     local keys = vim.split(k, ".", { plain = true })
@@ -188,7 +208,7 @@ M.section_toluacode = function(ir)
     return ([[hl.monitor(%s)]]):format(pretty.tbl_toluacode(monitor_opts, keys))
   elseif ir.section_name == "windowrule" then
     local window_rule_spec, keys = section_to_tbl_and_keys(ir)
-    normalize.window_rule_inplace(window_rule_spec)
+    migrate.window_rule(window_rule_spec)
     return ([[hl.window_rule(%s)]]):format(pretty.tbl_toluacode(window_rule_spec, keys))
   end
   local indent1 = pretty.indent(1)
@@ -247,6 +267,7 @@ local function merge_params(tbl, params, i, j)
     if type(param) == "string" then
       local val, key = param_string_to_val(param)
       assert(key, "Expected parameter to have a key" .. param)
+      key = utils.tosnakecase(key)
       keys[#keys + 1] = key
       if tbl[key] == nil then
         ---@diagnostic disable-next-line: assign-type-mismatch
@@ -255,8 +276,13 @@ local function merge_params(tbl, params, i, j)
         ---@diagnostic disable-next-line: assign-type-mismatch
         tbl[key] = vim.tbl_deep_extend("force", tbl[key], val)
       else
-        error("Could not parse parameter" .. param)
+        chunks[#chunks + 1] = ("-- hyprlang-to-lua: for below, did not merge in key-value pair: %s, %s"):format(
+          key,
+          val
+        )
       end
+    else
+      error("Could not parse parameter" .. param)
     end
   end
   return keys
@@ -309,13 +335,14 @@ M.keyword_toluacode = function(ir)
       workspace = tostring(ir.params[1]),
     }
     local keys_by_merge_order = merge_params(ws_rule, ir.params, 2)
+    migrate.workspace_rule(ws_rule, keys_by_merge_order)
     return ("hl.workspace_rule(%s)"):format(pretty.tbl_toluacode(ws_rule, keys_by_merge_order))
   elseif keyword == "windowrule" then
     ---@type HL.WindowRuleSpec
     local window_rule_spec = {}
     local keys = merge_params(window_rule_spec, ir.params)
 
-    normalize.window_rule_inplace(window_rule_spec)
+    migrate.window_rule(window_rule_spec)
     return ("hl.window_rule(%s)"):format(pretty.tbl_toluacode(window_rule_spec, keys))
   elseif keyword == "bezier" then
     local name, x0, y0, x1, y1 = unpack(ir.params)
@@ -335,38 +362,43 @@ M.keyword_toluacode = function(ir)
       leaf = leaf,
       enabled = enabled_int == 1,
       speed = speed,
-      curve = curve,
+      bezier = curve,
       style = style,
-    }, { "leaf", "enabled", "speed", "curve", "style" }, nil, math.huge))
+    }, { "leaf", "enabled", "speed", "bezier", "style" }, nil, math.huge))
   elseif vim.startswith(keyword, "bind") then
     local flagstr = keyword:sub(5)
     local bind_opts, keyorder = bindopts_from_flagstring(flagstr)
-    local mods, key, desc, dispatcher, dispatcher_params
+    local modstring, key, desc, dispatcher, dispatcher_params
 
     ---HACK: hyprlang treesitter is pretty bad with parsing keybinds so we'll just parse manually
     local raw_params = ir.params.raw
     if flagstr:find("d") then
       ---mods, key, dispatcher(, params)
       ---mods, key, desc, dispatcher(, params)
-      mods, key, desc, dispatcher, dispatcher_params =
+      ---@type string, string, string, string, string
+      modstring, key, desc, dispatcher, dispatcher_params =
         raw_params:match("^([^,]*),%s*([^,]*),%s*([^,]+),%s*([^,]+)%s*,?%s*(.*)")
+      bind_opts.desc = desc
     else
-      mods, key, dispatcher, dispatcher_params =
+      ---@type string, string, string, string
+      modstring, key, dispatcher, dispatcher_params =
         raw_params:match("^([^,]*),%s*([^,]*),%s*([^,]+)%s*,?%s*(.*)")
     end
-    bind_opts.desc = desc
 
-    local modkey_luacode = toluacode(utils.istruthy(mods) and ("%s + %s"):format(mods, key) or key)
+    local lhs = migrate.bind_mod_and_keys_to_lhs(modstring, key)
     local dispatcher_code = require("hyprlang-to-lua.luagen.dispatchers").dispatcher_toluacode(
       dispatcher,
-      dispatcher_params
+      dispatcher_params,
+      lhs
     )
+
+    local lhs_code = toluacode(lhs)
     if vim.tbl_isempty(bind_opts) then
-      return ("hl.bind(%s, %s)"):format(modkey_luacode, dispatcher_code)
+      return ("hl.bind(%s, %s)"):format(lhs_code, dispatcher_code)
     end
 
     return ("hl.bind(%s, %s, %s)"):format(
-      modkey_luacode,
+      lhs_code,
       dispatcher_code,
       pretty.tbl_toluacode(bind_opts, keyorder)
     )
@@ -383,56 +415,6 @@ M.keyword_toluacode = function(ir)
     return ("hl.layer_rule(%s)"):format(pretty.tbl_toluacode(layer_rule, keys_by_merge_order))
   end
   error("TODO keyword:" .. toluacode(ir))
-end
-
----@param chunks string[]
----@nodiscard
-M.optimize = function(chunks)
-  ---@type string[]
-  local optimized_chunks = {}
-
-  for i = 1, #chunks do
-    local chunk = chunks[i]
-
-    -- Pattern matches hl.on("event", function() body end)
-    -- %b() matches balanced parentheses for the function body
-    if vim.startswith(chunk, "hl.on") then
-      local event, body = chunk:match('^hl%.on%("([^"]+)"%,%s*function%(%)%s*(.-)%s*end%)%s*$')
-
-      if not event and body then
-        error("could not parse hl.on chunk for optimization" .. chunk)
-      end
-      local indent1 = pretty.indent(1)
-
-      -- Check if the previous chunk was also an hl.on for the same event
-      local prev_event, prev_body
-      local prev_chunk = optimized_chunks[#optimized_chunks]
-      if prev_chunk then
-        prev_event, prev_body =
-          prev_chunk:match('^hl%.on%("([^"]+)"%,%s*function%(%)%s*(.-)%s*end%)%s*$')
-      end
-
-      if prev_event ~= event then
-        optimized_chunks[#optimized_chunks + 1] = chunk
-      else
-        optimized_chunks[#optimized_chunks] = string.format(
-          [[hl.on("%s", function()
-%s%s
-%s%s
-end)]],
-          event,
-          indent1,
-          prev_body,
-          indent1,
-          body
-        )
-      end
-    else
-      optimized_chunks[#optimized_chunks + 1] = chunk
-    end
-  end
-
-  return optimized_chunks
 end
 
 return M

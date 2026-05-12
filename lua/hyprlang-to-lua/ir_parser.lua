@@ -130,7 +130,7 @@ M.parse_assignment_as_keyword = function(node, src)
   }
   local value_child = node:field("value")[1]
   if value_child then
-    ir.params[#ir.params + 1] = M.parse_value(value_child, src)
+    ir.params[1] = M.parse_value(value_child, src)
     ir.params.raw = get_node_text(value_child, src)
   end
   return ir
@@ -385,7 +385,11 @@ M.parse_value = function(node, src)
   elseif nodetype == "keys" then
     return M.parse_keys(node, src)
   elseif nodetype == "string" then
-    return vim.trim(get_node_text(node, src))
+    local str = vim.trim(get_node_text(node, src))
+    if str == "yes" then
+      return true
+    end
+    return str
   elseif nodetype == "variable" then
     return M.parse_variable(node, src)
   elseif nodetype == "color" then

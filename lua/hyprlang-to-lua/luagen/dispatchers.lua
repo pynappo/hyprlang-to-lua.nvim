@@ -608,9 +608,15 @@ local mouse_dispatcher_converters = {
 
 ---@param dispatcher string
 ---@param params_raw string
+---@param keys string
 ---@return string? luacode
-M.dispatcher_toluacode = function(dispatcher, params_raw)
-  local converter = dispatcher_converters[dispatcher] or mouse_dispatcher_converters[dispatcher]
+M.dispatcher_toluacode = function(dispatcher, params_raw, keys)
+  local converter
+  if keys:find("mouse", 1, true) then
+    converter = mouse_dispatcher_converters[dispatcher] or dispatcher_converters[dispatcher]
+  else
+    converter = dispatcher_converters[dispatcher]
+  end
   if not converter then
     error(
       ("Dispatcher convertion not implemented for dispatcher %s, params: %s"):format(
