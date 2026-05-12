@@ -81,9 +81,11 @@ local chunks = {}
 ---@param config_ir hyprtolua.ir.Configuration
 ---@return string[] chunks
 ---@nodiscard
-M.config_toluacode = function(config_ir)
+M.config_toluachunks = function(config_ir)
   ---@type string[]
   chunks = {}
+  ---@type table<string, hyprtolua.ir.DeclarationValue>
+  local variables = {}
   ---@type string?
   local submap = nil
   for i = 1, #config_ir do
@@ -129,6 +131,17 @@ M.config_toluacode = function(config_ir)
           toluacode(ir.source)
         )
       end
+    elseif ir.declared_name then
+      ---@cast ir hyprtolua.ir.Declaration
+      local varname, value = migrate.variable_name(ir.declared_name), ir.value
+      if not variables[varname] then
+        chunks[#chunks + 1] = ("local %s = %s"):format(varname, toluacode(value))
+      else
+        chunks[#chunks + 1] = ("%s = %s"):format(varname, toluacode(value))
+      end
+      variables[varname] = ir.value
+    else
+      error("Unhandled ir in config: " .. vim.inspect(ir))
     end
   end
   if submap then
@@ -374,18 +387,19 @@ M.keyword_toluacode = function(ir)
     local raw_params = ir.params.raw
     if flagstr:find("d") then
       ---mods, key, dispatcher(, params)
-      ---mods, key, desc, dispatcher(, params)
       ---@type string, string, string, string, string
       modstring, key, desc, dispatcher, dispatcher_params =
         raw_params:match("^([^,]*),%s*([^,]*),%s*([^,]+),%s*([^,]+)%s*,?%s*(.*)")
       bind_opts.desc = desc
     else
+      ---mods, key, desc, dispatcher(, params)
       ---@type string, string, string, string
       modstring, key, dispatcher, dispatcher_params =
         raw_params:match("^([^,]*),%s*([^,]*),%s*([^,]+)%s*,?%s*(.*)")
     end
 
-    local lhs = migrate.bind_mod_and_keys_to_lhs(modstring, key)
+    local lhs, mod_varnames = migrate.bind_lhs(modstring, key)
+
     local dispatcher_code = require("hyprlang-to-lua.luagen.dispatchers").dispatcher_toluacode(
       dispatcher,
       dispatcher_params,
@@ -393,6 +407,11 @@ M.keyword_toluacode = function(ir)
     )
 
     local lhs_code = toluacode(lhs)
+    if #mod_varnames > 0 then
+      local variable_code = table.concat(mod_varnames, [[ .. " + " .. ]])
+      lhs_code = ("%s .. %s"):format(variable_code, toluacode(" + " .. lhs))
+    end
+
     if vim.tbl_isempty(bind_opts) then
       return ("hl.bind(%s, %s)"):format(lhs_code, dispatcher_code)
     end
@@ -416,5 +435,4 @@ M.keyword_toluacode = function(ir)
   end
   error("TODO keyword:" .. toluacode(ir))
 end
-
 return M

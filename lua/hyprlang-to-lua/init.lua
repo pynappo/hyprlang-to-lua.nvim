@@ -15,7 +15,7 @@ M.convert = function(hyprlang_text)
   end
   local configuration_root = tree[1]:root() -- configuration
   local config_ir = ir_parser.parse_configuration(configuration_root, hyprlang_text)
-  local chunks = luagen.config_toluacode(config_ir)
+  local chunks = luagen.config_toluachunks(config_ir)
   chunks = optimize.optimize(chunks)
   return chunks, config_ir
 end
@@ -24,8 +24,8 @@ end
 M.convert_to_stdout_then_quit = function(path)
   path = vim.fs.normalize(path)
   local text = utils.readfile(path)
-  local lua_lines = table.concat(M.convert(text), "\n")
-  io.stdout:write(lua_lines)
+  local lua_text = table.concat(M.convert(text), "\n")
+  io.stdout:write(lua_text)
   vim.cmd.quit()
 end
 

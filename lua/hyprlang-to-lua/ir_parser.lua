@@ -60,7 +60,13 @@ M.parse_configuration = function(node, src)
       elseif statement_type == "comment" then
         ir = M.parse_comment(child, src)
       else
-        error("Invalid configuration child type: " .. statement_type)
+        ---@type hyprtolua.ir.Comment
+        ir = {
+          comment = ("Invalid configuration child: %s %s"):format(
+            statement_type,
+            get_node_text(node, src)
+          ),
+        }
       end
       config_ir[#config_ir + 1] = ir
     end
@@ -76,8 +82,13 @@ end
 --     $._linebreak,
 --   ),
 ---@class hyprtolua.ir.Declaration
----@field name string
----@field value string|number|hyprtolua.ir.Color
+---@field declared_name string
+---@field value hyprtolua.ir.DeclarationValue
+
+---@alias hyprtolua.ir.DeclarationValue
+---|string
+---|number
+---|hyprtolua.ir.Color
 
 ---@param node TSNode
 ---@param src string
@@ -86,22 +97,22 @@ M.parse_declaration = function(node, src)
   local name_child = assert(node:field("name")[1])
   local value_child = assert(node:field("value")[1])
   local value
-  do
-    local valtype = value_child:type()
-    if valtype == "mod" then
-      value = get_node_text(value_child, src)
-    elseif valtype == "number" then
-      value = assert(tonumber(get_node_text(value_child, src)))
-    elseif valtype == "string_literal" then
-      value = get_node_text(value_child, src)
-    elseif valtype == "color" then
-      value = M.parse_color(value_child, src)
-    else
-      error("Invalid value node type for declaration: " .. valtype)
-    end
+  local value_text = vim.trim(get_node_text(value_child, src))
+  local valtype = value_child:type()
+  if valtype == "mod" then
+    value = value_text
+  elseif valtype == "number" then
+    value = assert(tonumber(value_text))
+  elseif valtype == "string_literal" then
+    value = value_text
+  elseif valtype == "color" then
+    value = M.parse_color(value_child, src)
+  else
+    error("Invalid value node type for declaration: " .. valtype)
   end
+  ---@type hyprtolua.ir.Declaration
   return {
-    name = get_node_text(name_child, src),
+    declared_name = M.parse_variable(name_child, src).variable_name,
     value = value,
   }
 end
@@ -701,16 +712,15 @@ end
 --
 --     variable: () => seq("$", field("name", /\w[\w\d]*/)),
 ---@class (exact) hyprtolua.ir.Variable
----@field name string
+---@field variable_name string
 
 ---@param node TSNode
 ---@param src string
 ---@return hyprtolua.ir.Variable
 M.parse_variable = function(node, src)
-  local name_child = assert(node:field("name")[1])
   ---@type hyprtolua.ir.Variable
   local ir = {
-    name = get_node_text(name_child, src),
+    variable_name = vim.trim(get_node_text(node, src)),
   }
   return ir
 end

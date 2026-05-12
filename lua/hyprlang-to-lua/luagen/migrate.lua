@@ -41,14 +41,6 @@ migrate.workspace_rule = function(rule, keys)
   utils.list_gsub(keys, workspace_rule_renames)
 end
 
----@param key string
-migrate.bind_key = function(key)
-  if #key > 4 and key:upper():find("ENTER") then
-    return "Return"
-  end
-  return key
-end
-
 --- See https://github.com/hyprwm/Hyprland/blob/5e441cae538c9396f2ee30338419bec12969608c/src/managers/KeybindManager.cpp#L220-L235
 local valid_mods = {
   "SHIFT",
@@ -95,17 +87,40 @@ local function find_words(input, words)
   return ordered
 end
 
----Mods and keys are combined into one +-delimited string
+---Mods and keys are combined into one +-delimited string.
+---Also returns variable names that are in the mod string.
 ---@param modstring string
 ---@param key string
 ---@return string lhs
-migrate.bind_mod_and_keys_to_lhs = function(modstring, key)
-  modstring = modstring:upper()
-  local mods = find_words(modstring, valid_mods)
+---@return string[] varnames already migrated
+migrate.bind_lhs = function(modstring, key)
+  ---@type string[]
+  local varnames = {}
+  for varname in modstring:gmatch("%$(%w+)") do
+    varnames[#varnames + 1] = migrate.variable_name(varname)
+  end
+
+  local mods = find_words(modstring:upper(), valid_mods)
   if key:upper():find("ENTER", 1, true) then
     key = "Return"
   end
-  return table.concat(vim.list_extend(mods, { key }), " + ")
+  return table.concat(vim.list_extend(mods, { key }), " + "), varnames
+end
+
+---An opinionated variable name formatter which converts hyprlang $variables to lua-compatible snake_case (unless it's all-caps)
+---@param varname string
+---@return string new_varname
+---@nodiscard
+migrate.variable_name = function(varname)
+  if vim.startswith(varname, "$") then
+    varname = varname:sub(2)
+  end
+
+  local varname_snake_case = utils.tosnakecase(varname)
+  if varname == varname:upper() then
+    return varname_snake_case:upper()
+  end
+  return varname_snake_case
 end
 
 return migrate
