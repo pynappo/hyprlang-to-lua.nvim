@@ -33,6 +33,7 @@ end
 
 ---@param path string
 M.convert_to_stdout_then_quit = function(path)
+  path = vim.fs.normalize(path)
   local text = utils.readfile(path)
   local lua_lines = table.concat(M.convert(text), "\n")
   io.stdout:write(lua_lines)
