@@ -1,13 +1,14 @@
 local new_set = MiniTest.new_set
 local expect, eq = MiniTest.expect, MiniTest.expect.equality
 local hyprtolua = require("hyprlang-to-lua")
-local utils = require("hyprlang-to-lua.utils")
+local hyprtolua_utils = require("hyprlang-to-lua.utils")
+local utils = require("tests.utils")
 local T = new_set()
 
 T["works with a basic monitor/workspace config"] = function()
-  local localconf_lines = utils.readlines("testdata/basic/hyprland.conf")
+  local localconf_lines = hyprtolua_utils.readlines("testdata/basic/hyprland.conf")
   local localconf_str = table.concat(localconf_lines, "\n")
-  local converted = hyprtolua.convert(localconf_str)
+  local converted = hyprtolua.convert(localconf_str, true)
   utils.expect_lines_match({
     [[
 hl.monitor({

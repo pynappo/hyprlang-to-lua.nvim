@@ -50,13 +50,13 @@ M.expect_hyprtolua_line = MiniTest.new_expectation(
   ---@param hyprlang string
   ---@param lua string
   function(hyprlang, lua)
-    local converted = require("hyprlang-to-lua").convert(hyprlang)
+    local converted = require("hyprlang-to-lua").convert(hyprlang, true)
     return converted[1] == lua
   end,
   ---@param hyprlang string
   ---@param lua string
   function(hyprlang, lua)
-    local converted = require("hyprlang-to-lua").convert(hyprlang)
+    local converted = require("hyprlang-to-lua").convert(hyprlang, true)
     local converted_hyprlang = converted[1]
     return ([[Expected hyprlang line:
 %s

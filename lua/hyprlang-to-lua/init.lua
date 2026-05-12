@@ -5,7 +5,7 @@ local optimize = require("hyprlang-to-lua.luagen.optimize")
 local M = {}
 
 ---@param hyprlang_text string
----@return string[] lua_lines
+---@return string[] chunks
 ---@return hyprtolua.ir.Configuration config_ir_for_debug
 M.convert = function(hyprlang_text)
   local hyprlang_parser = vim.treesitter.get_string_parser(hyprlang_text, "hyprlang")
@@ -17,18 +17,7 @@ M.convert = function(hyprlang_text)
   local config_ir = ir_parser.parse_configuration(configuration_root, hyprlang_text)
   local chunks = luagen.config_toluacode(config_ir)
   chunks = optimize.optimize(chunks)
-  local date = os.date("%Y-%m-%dT%H:%M:%S")
-
-  local lines = {
-    ("-- Start of translated config by hyprlang-to-lua.nvim on %s"):format(date),
-  }
-  for _, chunk in ipairs(chunks) do
-    for line in vim.gsplit(chunk, "\n", { plain = true }) do
-      lines[#lines + 1] = line
-    end
-  end
-  lines[#lines + 1] = ("-- End of translated config by hyprlang-to-lua.nvim on %s"):format(date)
-  return lines, config_ir
+  return chunks, config_ir
 end
 
 ---@param path string
