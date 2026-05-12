@@ -1,11 +1,26 @@
-A WIP one-off plugin to assist in the migration of hyprlang syntax to lua, using Neovim's built-in Treesitter parsing.
+A WIP one-off plugin to assist in the Hyprland 0.55 migration from hyprlang to lua, using Neovim's built-in Treesitter
+parsing.
 
-# Use
+# Usage
 
 Install `tree-sitter-hyprlang` parser + queries into Neovim via your method of choice.
 
-In a hyprlang buffer (e.g. `:set ft=hyprlang`), use `:HyprlangToLua` to open a new buffer with the selected hyprlang
-converted to Lua. If no text is selected, the current hyprlang buffer is used.
+In a hyprlang buffer (e.g. `:set ft=hyprlang`), run `:HyprlangToLua`, which will open a new split with the selected
+hyprlang converted to Lua. To convert the whole buffer, select it with `:%HyprlangToLua`
+
+If you want headless operation (i.e. to pipe the result into a new file), run:
+
+```bash
+nvim --headless --cmd "autocmd VimEnter * lua require('hyprlang-to-lua').convert_to_stdout_then_quit('$XDG_CONFIG_HOME/hypr/hyprland.conf')"
+```
+
+## Limitations
+
+- Rules with multiple matching rules on the same type (e.g. two `match:class` rules) will keep only one of them. This does
+not warn about that yet.
+- Testing is largely done on my own config, so please feel free to file issues as you run into them.
+- There's some amount of effort to keep the generated lua looking reasonable (in terms of line length, table formatting,
+etc.), but it is not as good as an actual formatter like [StyLua](https://github.com/JohnnyMorganz/StyLua).
 
 # Developing
 
@@ -14,3 +29,9 @@ Tools:
 - lua-language-server
 - Neovim
 - hyprland built from git (or have the lua stubs available at /usr/share/hypr/stubs/).
+
+# AI disclosure
+
+- Used Gemini for writing some string manipulation code (particularly, some complex lua pattern strings).
+- Pretty much everything else (including this README) is human-written.
+
