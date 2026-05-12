@@ -15,7 +15,8 @@ M.convert = function(hyprlang_text)
   end
   local configuration_root = tree[1]:root() -- configuration
   local config_ir = ir_parser.parse_configuration(configuration_root, hyprlang_text)
-  local chunks = luagen.config_toluachunks(config_ir)
+  local generator = luagen:new()
+  local chunks = generator:config_toluachunks(config_ir)
   chunks = optimize.optimize(chunks)
   return chunks, config_ir
 end

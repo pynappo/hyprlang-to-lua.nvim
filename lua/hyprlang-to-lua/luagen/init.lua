@@ -2,12 +2,25 @@ local pretty = require("hyprlang-to-lua.luagen.pretty")
 local utils = require("hyprlang-to-lua.utils")
 local migrate = require("hyprlang-to-lua.luagen.migrate")
 local toluacode = pretty.toluacode
-local M = {}
+local Generator = {}
+
+---Creates a new generator instance
+---@class hyprtolua.LuaGenerator
+---@field chunks string[] The chunks processed so far
+---@field variables string[] The chunks processed so far
+function Generator:new()
+  local o = {}
+  setmetatable(o, self)
+  o.chunks = {}
+  self.__index = self
+  return o
+end
 
 ---@param irs hyprtolua.ir.Exec[]
 ---@param variant hyprtolua.ir.ExecVariant
+---@return string luacode
 ---@nodiscard
-M.exec_toluacode = function(irs, variant)
+function Generator:exec_toluacode(irs, variant)
   ---@type string[]
   local exec_cmd_lines = {}
   for _, ir in ipairs(irs) do
@@ -77,15 +90,15 @@ local function parse_submap(ir, last_submap)
   return not is_reset_submap and submap or nil, table.concat(chunks, "\n")
 end
 
-local chunks = {}
 ---@param config_ir hyprtolua.ir.Configuration
 ---@return string[] chunks
 ---@nodiscard
-M.config_toluachunks = function(config_ir)
+function Generator:config_toluachunks(config_ir)
   ---@type string[]
-  chunks = {}
+  self.chunks = {}
   ---@type table<string, hyprtolua.ir.DeclarationValue>
-  local variables = {}
+  self.variables = {}
+  local chunks = self.chunks
   ---@type string?
   local submap = nil
   for i = 1, #config_ir do
@@ -97,7 +110,7 @@ M.config_toluachunks = function(config_ir)
         table.insert(execs_of_same_variant, ir[i + 1])
         i = i + 1
       end
-      chunks[#chunks + 1] = M.exec_toluacode(execs_of_same_variant, ir.variant)
+      chunks[#chunks + 1] = Generator:exec_toluacode(execs_of_same_variant, ir.variant)
     elseif ir.comment then
       ---@cast ir hyprtolua.ir.Comment
       chunks[#chunks + 1] = "--" .. ir.comment
@@ -107,7 +120,7 @@ M.config_toluachunks = function(config_ir)
       if ir.keyword == "submap" then
         submap, chunk = parse_submap(ir, submap)
       else
-        chunk = M.keyword_toluacode(ir)
+        chunk = Generator:keyword_toluacode(ir)
         if submap then
           chunk = indent_str(chunk, 1)
         end
@@ -116,7 +129,7 @@ M.config_toluachunks = function(config_ir)
       chunks[#chunks + 1] = chunk
     elseif ir.section_name then
       ---@cast ir hyprtolua.ir.Section
-      chunks[#chunks + 1] = M.section_toluacode(ir)
+      chunks[#chunks + 1] = Generator:section_toluacode(ir)
     elseif ir.source then
       local path_to_source = vim.fs.normalize(ir.source)
       local require_path
@@ -134,12 +147,12 @@ M.config_toluachunks = function(config_ir)
     elseif ir.declared_name then
       ---@cast ir hyprtolua.ir.Declaration
       local varname, value = migrate.variable_name(ir.declared_name), ir.value
-      if not variables[varname] then
+      if not self.variables[varname] then
         chunks[#chunks + 1] = ("local %s = %s"):format(varname, toluacode(value))
       else
         chunks[#chunks + 1] = ("%s = %s"):format(varname, toluacode(value))
       end
-      variables[varname] = ir.value
+      self.variables[varname] = ir.value
     else
       error("Unhandled ir in config: " .. vim.inspect(ir))
     end
@@ -210,7 +223,7 @@ end
 
 ---@param ir hyprtolua.ir.Section
 ---@nodiscard
-M.section_toluacode = function(ir)
+function Generator:section_toluacode(ir)
   if ir.section_name == "monitorv2" then
     ---@type HL.MonitorSpec
     local monitor_opts, keys = section_to_tbl_and_keys(ir)
@@ -267,13 +280,13 @@ local param_string_to_val = function(param_str)
   return value, key
 end
 
----Takes a table and merges in keyword parameters from params's (start or 1) until (j or #ir.params.)
+---Takes a table and merges in parameters from (start or 1) until (j or #params)
 ---@param tbl table
 ---@param params hyprtolua.ir.Params
 ---@param i integer?
 ---@param j integer?
 ---@return any[] keys
-local function merge_params(tbl, params, i, j)
+function Generator:_merge_params(tbl, params, i, j)
   local keys = {}
   for idx = i or 1, j or #params do
     local param = params[idx]
@@ -289,7 +302,7 @@ local function merge_params(tbl, params, i, j)
         ---@diagnostic disable-next-line: assign-type-mismatch
         tbl[key] = vim.tbl_deep_extend("force", tbl[key], val)
       else
-        chunks[#chunks + 1] = ("-- hyprlang-to-lua: for below, did not merge in key-value pair: %s, %s"):format(
+        self.chunks[#self.chunks + 1] = ("-- hyprlang-to-lua: for below, did not merge in key-value pair: %s, %s"):format(
           key,
           val
         )
@@ -335,7 +348,7 @@ end
 ---@param ir hyprtolua.ir.Keyword
 ---@return string
 ---@nodiscard
-M.keyword_toluacode = function(ir)
+function Generator:keyword_toluacode(ir)
   local keyword = ir.keyword
   if keyword == "env" then
     return ("hl.env(%s, %s)"):format(
@@ -347,13 +360,13 @@ M.keyword_toluacode = function(ir)
     local ws_rule = {
       workspace = tostring(ir.params[1]),
     }
-    local keys_by_merge_order = merge_params(ws_rule, ir.params, 2)
+    local keys_by_merge_order = self:_merge_params(ws_rule, ir.params, 2)
     migrate.workspace_rule(ws_rule, keys_by_merge_order)
     return ("hl.workspace_rule(%s)"):format(pretty.tbl_toluacode(ws_rule, keys_by_merge_order))
   elseif keyword == "windowrule" then
     ---@type HL.WindowRuleSpec
     local window_rule_spec = {}
-    local keys = merge_params(window_rule_spec, ir.params)
+    local keys = self:_merge_params(window_rule_spec, ir.params)
 
     migrate.window_rule(window_rule_spec)
     return ("hl.window_rule(%s)"):format(pretty.tbl_toluacode(window_rule_spec, keys))
@@ -430,9 +443,9 @@ M.keyword_toluacode = function(ir)
     }, { "match", "blur" }))
   elseif keyword == "layerrule" then
     local layer_rule = {}
-    local keys_by_merge_order = merge_params(layer_rule, ir.params)
+    local keys_by_merge_order = self:merge_params(layer_rule, ir.params)
     return ("hl.layer_rule(%s)"):format(pretty.tbl_toluacode(layer_rule, keys_by_merge_order))
   end
   error("TODO keyword:" .. toluacode(ir))
 end
-return M
+return Generator

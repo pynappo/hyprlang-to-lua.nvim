@@ -714,6 +714,13 @@ end
 ---@class (exact) hyprtolua.ir.Variable
 ---@field variable_name string
 
+---@class hyprtolua.ir.VariableMetatable : metatable
+local variable_mt = {
+  ---@param ir hyprtolua.ir.Variable
+  __toluacode = function(ir)
+    return require("hyprlang-to-lua.luagen.migrate").variable_name(ir.variable_name)
+  end,
+}
 ---@param node TSNode
 ---@param src string
 ---@return hyprtolua.ir.Variable
@@ -722,6 +729,7 @@ M.parse_variable = function(node, src)
   local ir = {
     variable_name = vim.trim(get_node_text(node, src)),
   }
+  setmetatable(ir, variable_mt)
   return ir
 end
 --

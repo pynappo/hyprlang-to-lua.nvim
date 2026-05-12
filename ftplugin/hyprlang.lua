@@ -12,6 +12,15 @@ vim.api.nvim_buf_create_user_command(0, "HyprlangToLuaSplit", function(args)
 
   local chunks = require("hyprlang-to-lua").convert(table.concat(hyprlang_lines, "\n"))
 
+  local newbuf = vim.api.nvim_create_buf(false, true)
+  local basename = vim.fs.basename(vim.api.nvim_buf_get_name(buf))
+  local basename_without_prefix = basename:sub(1, -6)
+
+  vim.api.nvim_buf_set_name(
+    newbuf,
+    ("%s/hyprlang-to-lua/%s.lua"):format(vim.fn.tempname(), basename_without_prefix)
+  )
+
   local date = os.date("%Y-%m-%dT%H:%M:%S")
   local lua_lines = {
     ("-- Start of translated config by hyprlang-to-lua.nvim on %s"):format(date),
@@ -24,16 +33,7 @@ vim.api.nvim_buf_create_user_command(0, "HyprlangToLuaSplit", function(args)
   lua_lines[#lua_lines + 1] = ("-- End of translated config by hyprlang-to-lua.nvim on %s"):format(
     date
   )
-
-  local newbuf = vim.api.nvim_create_buf(false, true)
-  local basename = vim.fs.basename(vim.api.nvim_buf_get_name(buf))
-  local basename_without_prefix = basename:sub(1, -6)
-
-  vim.api.nvim_buf_set_name(
-    newbuf,
-    ("%s/hyprlang-to-lua/%s.lua"):format(vim.fn.tempname(), basename_without_prefix)
-  )
-  vim.api.nvim_buf_set_lines(newbuf, 0, -1, false, chunks)
+  vim.api.nvim_buf_set_lines(newbuf, 0, -1, false, lua_lines)
   vim.bo[newbuf].filetype = "lua"
   vim.api.nvim_open_win(newbuf, true, {
     split = vim.o.splitright and "right" or "left",

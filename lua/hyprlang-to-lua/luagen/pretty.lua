@@ -251,10 +251,16 @@ M.toluacode = function(val, indent0, column_width)
     return tostring(val)
   end
 
-  ---@type metatable
+  ---@type metatable|hyprtolua.ir.VariableMetatable
   local mt = getmetatable(val)
-  if mt and mt.__tostring then
-    return M.luaquote(tostring(val))
+  if mt then
+    if mt.__toluacode then
+      return mt.__toluacode(val)
+    end
+
+    if mt.__tostring then
+      return M.luaquote(tostring(val))
+    end
   end
 
   local keys = vim.tbl_keys(val)

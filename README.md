@@ -24,7 +24,7 @@ require('hyprlang-to-lua').convert_to_stdout_then_quit('$XDG_CONFIG_HOME/hypr/hy
 
 ## Known limitations
 
-- Variables are not yet supported.
+- Variables are currently only supported for binds.
 - Rules with multiple matchers of the same type (e.g. two `match:class` rules in a window rule) will keep only one of
 them. The conversion thus only keeps one of the rules, but does not currently comment out which rule it dropped.
 - Testing is largely done on my own config, so please feel free to file issues as you run into them.
