@@ -47,4 +47,25 @@ function M.unpack_by_whitespace(s, i, j)
   return unpack(vim.split(s, "%s+"), i, j)
 end
 
+---@param path string
+---@return string[] lines
+---@nodiscard
+M.readlines = function(path)
+  local lines = {}
+  for line in io.lines(path) do
+    lines[#lines + 1] = line
+  end
+  return lines
+end
+
+---@param path string
+---@return string text
+---@nodiscard
+M.readfile = function(path)
+  local f = assert(io.open(path, "r"))
+  local text = assert(f:read("*a"))
+  f:close()
+  return text
+end
+
 return M

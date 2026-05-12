@@ -1,11 +1,12 @@
 local ir_parser = require("hyprlang-to-lua.ir_parser")
 local luagen = require("hyprlang-to-lua.luagen")
+local utils = require("hyprlang-to-lua.utils")
 local M = {}
 
 ---@param hyprlang_text string
 ---@return string[] lua_lines
 ---@return hyprtolua.ir.Configuration config_ir_for_debug
-function M.convert(hyprlang_text)
+M.convert = function(hyprlang_text)
   local hyprlang_parser = vim.treesitter.get_string_parser(hyprlang_text, "hyprlang")
   local tree = hyprlang_parser:parse(true)
   if not tree or not tree[1] then
@@ -27,6 +28,14 @@ function M.convert(hyprlang_text)
   end
   lines[#lines + 1] = ("-- End of translated config by hyprlang-to-lua.nvim on %s"):format(date)
   return lines, config_ir
+end
+
+---@param path string
+M.convert_to_stdout_then_quit = function(path)
+  local text = utils.readfile(path)
+  local lua_lines = table.concat(M.convert(text), "\n")
+  io.stdout:write(lua_lines)
+  vim.cmd.quit()
 end
 
 return M

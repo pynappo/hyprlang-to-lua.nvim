@@ -1,20 +1,11 @@
 local new_set = MiniTest.new_set
 local expect, eq = MiniTest.expect, MiniTest.expect.equality
 local hyprtolua = require("hyprlang-to-lua")
-local utils = require("tests.utils")
+local utils = require("hyprlang-to-lua.utils")
 local T = new_set()
 
----@param filename string
----@return string[]
-local readlines = function(filename)
-  local lines = {}
-  for line in io.lines(filename) do
-    lines[#lines + 1] = line
-  end
-  return lines
-end
 T["works with a basic monitor/workspace config"] = function()
-  local localconf_lines = readlines("testdata/basic/hyprland.conf")
+  local localconf_lines = utils.readlines("testdata/basic/hyprland.conf")
   local localconf_str = table.concat(localconf_lines, "\n")
   local converted = hyprtolua.convert(localconf_str)
   utils.expect_lines_match({

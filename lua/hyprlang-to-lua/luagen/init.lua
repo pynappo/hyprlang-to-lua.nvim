@@ -157,10 +157,11 @@ local function section_to_tbl_and_keys(section_ir)
       ---@cast ir hyprtolua.ir.Keyword
       k = ir.keyword
       local first_param = ir.params[1]
-      v = first_param[1] ~= nil and first_param or ir.params.raw
+      v = first_param ~= nil and first_param or ir.params.raw
     else
       error("TODO: unparsed ir in section: " .. pretty.toluacode(ir))
     end
+
     local part = {}
     local keys = vim.split(k, ".", { plain = true })
     tbl_set(part, keys, v)

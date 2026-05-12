@@ -235,6 +235,7 @@ end
 
 ---Similar to vim.inspect, but tries to write lua code similarly to how well-formatted lua code looks like.
 ---Will try to write the table as a oneliner if possible.
+---Tables that implement a __tostring in their metatable will be tostring'd.
 ---@param val any
 ---@param indent0 string?
 ---@param column_width integer?
@@ -249,6 +250,7 @@ M.toluacode = function(val, indent0, column_width)
   if valtype ~= "table" then
     return tostring(val)
   end
+
   ---@type metatable
   local mt = getmetatable(val)
   if mt and mt.__tostring then

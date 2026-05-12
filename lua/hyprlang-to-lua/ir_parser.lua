@@ -429,6 +429,18 @@ end
 ---@alias hyprtolua.ir.Color
 ---|hyprtolua.ir.Hex
 ---|hyprtolua.ir.RGB
+---|{ raw: string }
+
+---@type metatable
+local color_mt = {
+  ---@param color hyprtolua.ir.Color
+  __tostring = function(color)
+    return color.raw
+  end,
+}
+
+---@class hyprtolua.ir.WithRawText
+---@field raw string
 
 ---@param node TSNode
 ---@param src string
@@ -436,24 +448,30 @@ end
 M.parse_color = function(node, src)
   local child = assert(node:child(0))
   local childtype = child:type()
+  ---@type hyprtolua.ir.Color
+  local color = {}
   if childtype == "rgb" then
-    return M.parse_RGB(child, src)
+    color = M.parse_RGB(child, src)
   elseif childtype == "legacy_hex" then
     local hex_child = assert(child:child(0)):child(2)
     assert(hex_child)
     ---@type hyprtolua.ir.Color
-    return {
+    color = {
       hex = get_node_text(hex_child, src),
     }
   else
     error("Invalid color node child: " .. childtype)
   end
+  --- Wrap with color metatable
+  color.raw = vim.trim(get_node_text(node, src))
+  setmetatable(color, color_mt)
+  return color
 end
 
 --     rgb: ($) =>
 --       seq(choice("rgb", "rgba"), "(", choice($.hex, $.number_tuple), ")"),
 ---@class (exact) hyprtolua.ir.RGB
----@field format "rgb"|"rgba"
+---@field color_format "rgb"|"rgba"
 ---@field [integer] number?
 ---@field hex string?
 
@@ -465,7 +483,8 @@ M.parse_RGB = function(node, src)
   local value_child = assert(node:child(2))
   ---@type hyprtolua.ir.RGB
   local ir = {
-    format = rgb_or_rgba_child:type() == "rgba" and "rgba" or "rgb",
+    color_format = rgb_or_rgba_child:type() == "rgba" and "rgba" or "rgb",
+    raw = get_node_text(node, src),
   }
   local valtype = value_child:type()
   if valtype == "hex" then
