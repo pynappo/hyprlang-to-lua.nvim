@@ -44,4 +44,28 @@ Lines from actual did not match expected:
 ]]):format(table.concat(mismatches, "\n"))
 end)
 
+---@type fun(hyprlang: string, lua: string)
+M.expect_hyprtolua_line = MiniTest.new_expectation(
+  "hyprlang to lua conversion",
+  ---@param hyprlang string
+  ---@param lua string
+  function(hyprlang, lua)
+    local converted = require("hyprlang-to-lua").convert(hyprlang)
+    return converted[1] == lua
+  end,
+  ---@param hyprlang string
+  ---@param lua string
+  function(hyprlang, lua)
+    local converted = require("hyprlang-to-lua").convert(hyprlang)
+    local converted_hyprlang = converted[1]
+    return ([[Expected hyprlang line:
+%s
+to convert into:
+%s
+got:
+%s
+]]):format(hyprlang, lua, converted_hyprlang)
+  end
+)
+
 return M

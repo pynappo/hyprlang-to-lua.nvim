@@ -87,29 +87,37 @@ end
 M.indent = indent
 
 ---@param str string
+---@return boolean
+---@nodiscard
+local has_double_square_brackets = function(str)
+  local found = str:find("[[", 1, true) or str:find("]]", 1, true)
+  return found ~= nil
+end
+
+---@param str string
 ---@return string luastring A valid string in lua code
+---@nodiscard
 M.luaquote = function(str)
   if M.opts.quote_style ~= "AutoPreferDouble" then
     error("TODO(other quote_styles)")
   end
-  if M.opts.quote_style == "AutoPreferDouble" then
-    if str:find("\n", 1, true) then
-      return ("[[\n%s]]"):format(str)
-    end
-
-    if not str:find([["]], 1, true) then
-      return ([["%s"]]):format(str)
-    end
-
-    if not str:find([[']], 1, true) then
-      return ([['%s']]):format(str)
-    end
-
-    if not str:find("[[", 1, true) or not str:find("]]", 1, true) then
-      return ("[[%s]]"):format(str)
-    end
+  if str:find("\n", 1, true) and not has_double_square_brackets(str) then
+    return ("[[\n%s]]"):format(str)
   end
-  error("TODO(string escaping), str: " .. str)
+
+  if not str:find([["]], 1, true) then
+    return ([["%s"]]):format(escape(str))
+  end
+
+  if not str:find([[']], 1, true) then
+    return ([['%s']]):format(escape(str))
+  end
+
+  if not has_double_square_brackets(str) then
+    return ("[[%s]]"):format(str)
+  end
+
+  return ([["%s"]]):format(escape(str):gsub('"', '\\"'))
 end
 
 local lua_keywords = {
@@ -139,13 +147,14 @@ local lua_keywords = {
 
 ---@param str string
 ---@return boolean
+---@nodiscard
 local function contains_lua_symbol(str)
   return str:find("[%+%-%*%/%%%^#=%~<>%(%){}%[%];:,%.]") ~= nil
 end
 
 ---@param str string
 ---@return string keystring
-local tokeystring = function(str)
+M.tokeystring = function(str)
   if lua_keywords[str] or contains_lua_symbol(str) then
     return ("[%s]"):format(M.luaquote(str))
   end
@@ -165,32 +174,39 @@ local typeprio = {
 local function sorted_strings_then_numbers(a, b)
   local atype = type(a)
   local btype = type(b)
-  if atype == btype and atype == "string" or atype == "number" then
+  if atype == btype and (atype == "string" or atype == "number") then
     return a < b
   end
 
-  return typeprio[a] < typeprio[b]
+  return typeprio[atype] < typeprio[btype]
 end
 
 ---Iterates through `tbl` in the order specified by `keys` and generates a pretty version of valid lua code for
 ---constructing the table.
 ---@param tbl table
 ---@param keys any[]
----@param opts hyprtolua.FormatOpts
 ---@param indent0 string
-local function tbl_tolua(tbl, keys, opts, indent0)
+---@param column_width integer
+local function tbl_tolua(tbl, keys, indent0, column_width)
   ---@type string[]
   local lines = { "{" }
   local indent1 = indent0 .. indent(1)
+  keys = vim.list.unique(keys)
   for _, k in ipairs(keys) do
     local v = tbl[k]
-    local ktype = type(k)
-    if ktype == "string" then
-      lines[#lines + 1] = ("%s = %s,"):format(tokeystring(k), M.toluacode(v, opts, indent1))
-    elseif ktype == "number" then
-      lines[#lines + 1] = ("%s%s,"):format(indent1, M.toluacode(v, opts, indent1))
-    else
-      error("TODO: other key type printing")
+    -- skip nil values
+    if v ~= nil then
+      local ktype = type(k)
+      if ktype == "string" then
+        lines[#lines + 1] = ("%s = %s,"):format(
+          M.tokeystring(k),
+          M.toluacode(v, indent1, column_width)
+        )
+      elseif ktype == "number" then
+        lines[#lines + 1] = ("%s,"):format(M.toluacode(v, indent1))
+      else
+        error("TODO: other key type printing")
+      end
     end
   end
   lines[#lines + 1] = "}"
@@ -200,7 +216,7 @@ local function tbl_tolua(tbl, keys, opts, indent0)
   for _, line in ipairs(lines) do
     endcol = endcol + 1 + #line
   end
-  local oneliner = endcol < opts.column_width
+  local oneliner = endcol < column_width
   if not oneliner then
     -- prepend indent to all contents
     for i = 2, #lines - 1 do
@@ -220,10 +236,11 @@ end
 ---Similar to vim.inspect, but tries to write lua code similarly to how well-formatted lua code looks like.
 ---Will try to write the table as a oneliner if possible.
 ---@param val any
----@param opts hyprtolua.FormatOpts?
 ---@param indent0 string?
+---@param column_width integer?
 ---@return string
-M.toluacode = function(val, opts, indent0)
+---@nodiscard
+M.toluacode = function(val, indent0, column_width)
   local valtype = type(val)
   if valtype == "string" then
     return M.luaquote(val)
@@ -238,21 +255,22 @@ M.toluacode = function(val, opts, indent0)
     return M.luaquote(tostring(val))
   end
 
-  opts = opts or M.opts
-  indent0 = indent0 or ""
   local keys = vim.tbl_keys(val)
   table.sort(keys, sorted_strings_then_numbers)
-  return tbl_tolua(val, keys, opts, indent0)
+  indent0 = indent0 or ""
+  column_width = column_width or M.opts.column_width
+  return tbl_tolua(val, keys, indent0, column_width)
 end
 
 ---Creates a pretty string representation of the table that lists the keys in order of the keyorder.
 ---@generic K
 ---@param t table<K, any>
 ---@param keyorder K[]
----@param opts hyprtolua.FormatOpts?
 ---@param indent0 string?
+---@param column_width integer?
 ---@return string pretty-print
-M.tbl_toluacode = function(t, keyorder, opts, indent0)
+---@nodiscard
+M.tbl_toluacode = function(t, keyorder, indent0, column_width)
   local keys = {}
   for _, key in ipairs(keyorder) do
     keys[key] = true
@@ -265,9 +283,24 @@ M.tbl_toluacode = function(t, keyorder, opts, indent0)
     end
   end
   table.sort(original_keys, sorted_strings_then_numbers)
-  opts = opts or M.opts
   indent0 = indent0 or ""
-  return tbl_tolua(t, vim.list_extend(original_keys, keyorder), opts, indent0)
+  column_width = column_width or M.opts.column_width
+  return tbl_tolua(t, vim.list_extend(original_keys, keyorder), indent0, column_width)
+end
+
+---@generic T
+---@param parts T[]
+---@param indent0 string?
+---@param column_width integer?
+---@return string luacode
+M.merge_toluacode = function(parts, indent0, column_width)
+  local keyorder = {}
+  for _, part in ipairs(parts) do
+    local k = next(keyorder)
+    keyorder[#keyorder + 1] = k
+  end
+  local merged = vim.tbl_deep_extend("force", {}, unpack(parts))
+  return M.tbl_toluacode(merged, keyorder, indent0, column_width)
 end
 
 return M

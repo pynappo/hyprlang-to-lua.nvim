@@ -34,7 +34,7 @@ local get_node_text = vim.treesitter.get_node_text
 --         ),
 --       ),
 ---@class (exact) hyprtolua.ir.Configuration
----@field [integer] hyprtolua.ir.Source|hyprtolua.ir.Exec|hyprtolua.ir.Declaration|hyprtolua.ir.Assignment|hyprtolua.ir.Keyword|hyprtolua.ir.Section|hyprtolua.ir.Comment
+---@field [integer] hyprtolua.ir.Source|hyprtolua.ir.Exec|hyprtolua.ir.Declaration|hyprtolua.ir.Keyword|hyprtolua.ir.Section|hyprtolua.ir.Comment
 
 ---@param node TSNode
 ---@param src string
@@ -52,7 +52,7 @@ M.parse_configuration = function(node, src)
       elseif statement_type == "declaration" then
         ir = M.parse_declaration(child, src)
       elseif statement_type == "assignment" then
-        ir = M.parse_assignment(child, src)
+        ir = M.parse_assignment_as_keyword(child, src)
       elseif statement_type == "keyword" then
         ir = M.parse_keyword(child, src)
       elseif statement_type == "section" then
@@ -114,22 +114,24 @@ end
 --         field("value", optional($._value)),
 --         $._linebreak,
 --       ),
----@class (exact) hyprtolua.ir.Assignment
----@field name string
----@field value hyprtolua.ir.Value?
 
+---Assignments are just keywords that have 0 or 1 param. Parsing them as such them makes the generation code simpler.
 ---@param node TSNode
 ---@param src string
----@return hyprtolua.ir.Assignment
-M.parse_assignment = function(node, src)
+---@return hyprtolua.ir.Keyword
+M.parse_assignment_as_keyword = function(node, src)
   local name_child = assert(node:field("name")[1])
-  ---@type hyprtolua.ir.Assignment
+  ---@type hyprtolua.ir.Keyword
   local ir = {
-    name = get_node_text(name_child, src),
+    keyword = get_node_text(name_child, src),
+    params = {
+      raw = "",
+    },
   }
   local value_child = node:field("value")[1]
   if value_child then
-    ir.value = M.parse_value(value_child, src)
+    ir.params[#ir.params + 1] = M.parse_value(value_child, src)
+    ir.params.raw = get_node_text(value_child, src)
   end
   return ir
 end
@@ -145,13 +147,23 @@ end
 ---@field keyword string
 ---@field params hyprtolua.ir.Params
 
+---@param node TSNode
+---@param src string
 M.parse_keyword = function(node, src)
   local keyword_child = assert(node:field("keyword")[1])
   local value_child = assert(node:field("value")[1])
+  local params_ir = M.parse_params(value_child, src)
+
+  if node:child(2):type() == "ERROR" then
+    -- happens in keyword=,paramtable.insert(params_ir, 1, "")2
+    table.insert(params_ir, 1, "")
+    params_ir.raw = "," .. params_ir.raw
+  end
+
   ---@type hyprtolua.ir.Keyword
   return {
     keyword = get_node_text(keyword_child, src),
-    params = M.parse_params(value_child, src),
+    params = params_ir,
   }
 end
 
@@ -171,7 +183,7 @@ end
 ---@class (exact) hyprtolua.ir.Section
 ---@field section_name string
 ---@field device string?
----@field [integer] hyprtolua.ir.Assignment|hyprtolua.ir.Keyword|hyprtolua.ir.Section
+---@field [integer] hyprtolua.ir.Keyword|hyprtolua.ir.Section
 
 ---@param node TSNode
 ---@param src string
@@ -193,7 +205,7 @@ M.parse_section = function(node, src)
     if child:named() then
       local childtype = child:type()
       if childtype == "assignment" then
-        ir[#ir + 1] = M.parse_assignment(child, src)
+        ir[#ir + 1] = M.parse_assignment_as_keyword(child, src)
       elseif childtype == "keyword" then
         ir[#ir + 1] = M.parse_keyword(child, src)
       elseif childtype == "section" then
@@ -214,7 +226,7 @@ end
 M.parse_source = function(node, src)
   local string_node = assert(node:child(2), "could not find string for source node")
   ---@type hyprtolua.ir.Source
-  return { source = get_node_text(string_node, src) }
+  return { source = vim.trim(get_node_text(string_node, src)) }
 end
 --
 --     arguments: ($) =>
@@ -369,7 +381,7 @@ M.parse_value = function(node, src)
   elseif nodetype == "gradient" then
     return M.parse_gradient(node, src)
   elseif nodetype == "mod" then
-    return get_node_text(node, src)
+    return vim.trim(get_node_text(node, src))
   elseif nodetype == "keys" then
     return M.parse_keys(node, src)
   elseif nodetype == "string" then
@@ -390,7 +402,7 @@ end
 ---@param src string
 ---@return boolean
 M.parse_boolean = function(node, src)
-  return vim.tbl_contains({ "true", "yes", "on" }, get_node_text(node, src))
+  return vim.tbl_contains({ "true", "yes", "on" }, vim.trim(get_node_text(node, src)))
 end
 --
 --     number: ($) =>
@@ -622,7 +634,9 @@ end
 --
 --     params: ($) =>
 --       prec(-1, seq($._value, repeat(seq(",", optional($._value))))),
----@alias hyprtolua.ir.Params hyprtolua.ir.Value[]
+---@class hyprtolua.ir.Params
+---@field [integer] hyprtolua.ir.Value
+---@field raw string
 
 ---Currently tree-sitter-hyprlang does not properly read all mods (e.g. SUPER_L). This works around that for now.
 ---@param modnode TSNode
@@ -640,7 +654,9 @@ end
 ---@return hyprtolua.ir.Params
 M.parse_params = function(node, src)
   ---@type hyprtolua.ir.Params
-  local ir = {}
+  local ir = {
+    raw = vim.trim(get_node_text(node, src)),
+  }
   for child in node:iter_children() do
     if child:type() ~= "," then
       if child:has_error() then

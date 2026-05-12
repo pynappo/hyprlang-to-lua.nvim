@@ -13,8 +13,8 @@ local readlines = function(filename)
   end
   return lines
 end
-T["works"] = function()
-  local localconf_lines = readlines("testdata/local.conf")
+T["works with a basic monitor/workspace config"] = function()
+  local localconf_lines = readlines("testdata/basic/hyprland.conf")
   local localconf_str = table.concat(localconf_lines, "\n")
   local converted = hyprtolua.convert(localconf_str)
   utils.expect_lines_match({

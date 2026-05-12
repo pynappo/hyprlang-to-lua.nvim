@@ -1,3 +1,8 @@
+[settings]
+windows_default_inline_shell_args = "powershell -NoProfile -NoLogo -Command"
+[env]
+LUARC = ".luarc.json"
+
 [tasks."deps:mini"]
 description = "Download 'mini.nvim' for the testing module"
 outputs = ["deps/mini.nvim"]
@@ -9,10 +14,25 @@ git clone --filter=blob:none https://github.com/nvim-mini/mini.nvim deps/mini.nv
 
 [tasks.test]
 description = "Run all test files"
-depends = ["deps:mini"]
+wait_for = ["deps:mini"]
 run = 'nvim --headless --noplugin -u ./scripts/minimal_init.lua -c "lua MiniTest.run()"'
 
 [tasks.test_file]
 description = "Run test from file at $FILE environment variable"
-depends = ["deps:mini"]
+wait_for = ["deps:mini"]
 run = 'nvim --headless --noplugin -u ./scripts/minimal_init.lua -c "lua MiniTest.run_file(\"$FILE\")"'
+
+[tasks.luals-check]
+run = """
+#!/usr/bin/env bash
+VIMRUNTIME_PATH=$(nvim --clean --headless --cmd 'lua io.write(vim.env.VIMRUNTIME)' --cmd 'qa')
+VIMRUNTIME="${VIMRUNTIME_PATH}" lua-language-server --configpath=$LUARC --check=.
+"""
+run_windows = """
+$env:VIMRUNTIME = (nvim --clean --headless --cmd 'lua io.write(vim.env.VIMRUNTIME)' --cmd 'qa')
+lua-language-server --configpath=$env:LUARC --check .
+"""
+wait_for = ['deps:mini']
+
+[tools]
+lua-language-server = "latest"

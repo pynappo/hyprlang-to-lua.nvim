@@ -1,0 +1,29 @@
+{
+  "$schema": "https://raw.githubusercontent.com/sumneko/vscode-lua/master/setting/schema.json",
+  "diagnostics": {
+    "libraryFiles": "Disable"
+  },
+  "runtime": {
+    "version": "LuaJIT",
+    "path": [
+      "?.lua",
+      "?/init.lua"
+    ]
+  },
+  "workspace": {
+    "checkThirdParty": "Disable",
+    "library": [
+      "$VIMRUNTIME/lua",
+      "/usr/share/hypr/stubs",
+      "../lua",
+      "../tests",
+      "../deps/mini.nvim/"
+    ],
+    "ignoreDir": [
+      ".dependencies",
+      ".luarocks",
+      ".lua",
+      ".repro"
+    ]
+  }
+}
