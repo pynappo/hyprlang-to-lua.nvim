@@ -1,5 +1,6 @@
 local pretty = require("hyprlang-to-lua.luagen.pretty")
 local utils = require("hyprlang-to-lua.utils")
+local normalize = require("hyprlang-to-lua.luagen.normalize")
 local toluacode = pretty.toluacode
 local M = {}
 
@@ -186,8 +187,9 @@ M.section_toluacode = function(ir)
     end
     return ([[hl.monitor(%s)]]):format(pretty.tbl_toluacode(monitor_opts, keys))
   elseif ir.section_name == "windowrule" then
-    local windowrule_opts, keys = section_to_tbl_and_keys(ir)
-    return ([[hl.window_rule(%s)]]):format(pretty.tbl_toluacode(windowrule_opts, keys))
+    local window_rule_spec, keys = section_to_tbl_and_keys(ir)
+    normalize.window_rule_inplace(window_rule_spec)
+    return ([[hl.window_rule(%s)]]):format(pretty.tbl_toluacode(window_rule_spec, keys))
   end
   local indent1 = pretty.indent(1)
   local config, keys = section_to_tbl_and_keys(ir)
@@ -238,7 +240,7 @@ end
 ---@param i integer?
 ---@param j integer?
 ---@return any[] keys
-local function merge_keyword_params(tbl, params, i, j)
+local function merge_params(tbl, params, i, j)
   local keys = {}
   for idx = i or 1, j or #params do
     local param = params[idx]
@@ -306,12 +308,15 @@ M.keyword_toluacode = function(ir)
     local ws_rule = {
       workspace = tostring(ir.params[1]),
     }
-    local keys_by_merge_order = merge_keyword_params(ws_rule, ir.params, 2)
+    local keys_by_merge_order = merge_params(ws_rule, ir.params, 2)
     return ("hl.workspace_rule(%s)"):format(pretty.tbl_toluacode(ws_rule, keys_by_merge_order))
   elseif keyword == "windowrule" then
-    local windowrule_opts = {}
-    local keys = merge_keyword_params(windowrule_opts, ir.params)
-    return ("hl.window_rule(%s)"):format(pretty.tbl_toluacode(windowrule_opts, keys))
+    ---@type HL.WindowRuleSpec
+    local window_rule_spec = {}
+    local keys = merge_params(window_rule_spec, ir.params)
+
+    normalize.window_rule_inplace(window_rule_spec)
+    return ("hl.window_rule(%s)"):format(pretty.tbl_toluacode(window_rule_spec, keys))
   elseif keyword == "bezier" then
     local name, x0, y0, x1, y1 = unpack(ir.params)
     return ("hl.curve(%s, %s)"):format(
@@ -374,7 +379,7 @@ M.keyword_toluacode = function(ir)
     }, { "match", "blur" }))
   elseif keyword == "layerrule" then
     local layer_rule = {}
-    local keys_by_merge_order = merge_keyword_params(layer_rule, ir.params)
+    local keys_by_merge_order = merge_params(layer_rule, ir.params)
     return ("hl.layer_rule(%s)"):format(pretty.tbl_toluacode(layer_rule, keys_by_merge_order))
   end
   error("TODO keyword:" .. toluacode(ir))
