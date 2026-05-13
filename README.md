@@ -1,8 +1,8 @@
-This plugin assists in the Hyprland 0.55 migration from hyprlang to Lua, using Neovim's built-in Treesitter parsing. Made
-for fun (and to convert my config over).
+This plugin assists in the Hyprland 0.55 migration from Hyprlang to Lua configs, using Neovim's built-in Treesitter
+parsing. Made for fun (and to convert my config over).
 
-The idea is to provide near-instant conversion on a best-effort basis to help users get 90% of the way to a fully converted Lua
-configuration, where they can then use LLMs and/or manual editing to finish the rest.
+The idea is to provide near-instant transpilation from Hyprlang to Lua on a best-effort basis to help users get 90% of
+the way to a fully converted Lua configuration, where they can then use LLMs and/or manual editing to finish the rest.
 
 <img width="1280" height="1002" alt="image" src="https://github.com/user-attachments/assets/ea2b6d07-b645-40c3-b46c-5fe625acf4d8" />
 
@@ -44,20 +44,23 @@ require('hyprlang-to-lua').convert_to_stdout_then_quit('$XDG_CONFIG_HOME/hypr/hy
 
 In general, the most common configuration segments should translate properly. Please report any issues as you find them.
 
-Notably:
+Notable details/limitations:
 
 - Conversion of hyprlang variables in keybinds (e.g. `$mainMod`) is implemented. Options that are assigned a single
-variable should convert as well. String interpolation (i.e. strings combined with variables) is only implemented for the
-keybind usecase at the time of writing.
+variable should convert as well. String interpolation (i.e. strings combined with variables) is only implemented for
+keybinds at the time of writing.
 - Most common keywords are implemented (execs, window rules, monitors, animations and curves, etc.).
 - Most, if not all dispatchers should translate properly.
-- Source statements: Should work if the source file being pointed to is under the `hypr/` directory, will be commented
+- Source statements should work if the source file being pointed to is under the `hypr/` directory, will be commented
 out otherwise.
 - Rules with multiple matchers of the same type (e.g. two `match:class` rules in a window rule) will keep only one of
-them. hyprlang-to-lua will leave comments about this, but it won't automatically generate the extra copy of the window
-rule for you.
+them. hyprlang-to-lua will leave comments about this, but it won't automatically generate the extra code for you if you
+want to preserve the same behavior.
 - There's some amount of effort to keep the generated Lua looking reasonable (in terms of line length, table formatting,
-  indentation, etc.)
+indentation, etc.)
+- The outermost levels of Lua tables have their key-value pairs by the order in which the keys were listed in the original
+hyprlang config, whenever possible. Inner tables do not have this same sorting (yet?), and are instead sorted
+alphabetically.
 
 ## TODOs
 
