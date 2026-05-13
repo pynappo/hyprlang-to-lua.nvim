@@ -598,6 +598,11 @@ local dispatcher_converters = {
   end,
   -- toggleswallow
   toggleswallow = "hl.dsp.window.toggle_swallow()",
+  -- dwindle stuff
+  pseudo = "hl.dsp.window.pseudo()",
+  layoutmsg = function(_, params_raw)
+    return ("hl.dsp.layout(%s)"):format(params_raw)
+  end,
 }
 
 ---@type table<string, string|hyprtolua.luagen.DispatchConverterFunction|false>
@@ -608,15 +613,14 @@ local mouse_dispatcher_converters = {
 
 ---@param dispatcher string
 ---@param params_raw string
----@param keys string
+---@param is_mouse_dispatcher boolean
 ---@return string? luacode
-M.dispatcher_toluacode = function(dispatcher, params_raw, keys)
+M.dispatcher_toluacode = function(dispatcher, params_raw, is_mouse_dispatcher)
   local converter
-  if keys:find("mouse", 1, true) then
+  if is_mouse_dispatcher then
     converter = mouse_dispatcher_converters[dispatcher] or dispatcher_converters[dispatcher]
-  else
-    converter = dispatcher_converters[dispatcher]
   end
+  converter = converter or dispatcher_converters[dispatcher]
   if not converter then
     error(
       ("Dispatcher convertion not implemented for dispatcher %s, params: %s"):format(

@@ -131,19 +131,36 @@ end
 ---@param src string
 ---@return hyprtolua.ir.Keyword
 M.parse_assignment_as_keyword = function(node, src)
-  local name_child = assert(node:field("name")[1])
+  local name_parts = {}
+  local iter = node:iter_children()
+  for child in iter do
+    if child:type() == "=" then
+      break
+    end
+
+    name_parts[#name_parts + 1] = get_node_text(child, src)
+  end
+  assert(node:field("name")[1])
+
   ---@type hyprtolua.ir.Keyword
   local ir = {
-    keyword = get_node_text(name_child, src),
+    keyword = table.concat(name_parts, ""),
     params = {
       raw = "",
     },
   }
-  local value_child = node:field("value")[1]
-  if value_child then
-    ir.params[1] = M.parse_value(value_child, src)
-    ir.params.raw = get_node_text(value_child, src)
+  for value in iter do
+    local valuetype = value:type()
+    if valuetype == "\n" then
+      break
+    elseif valuetype ~= "comment" then
+      local node_text = get_node_text(value, src)
+      ir.params[#ir.params + 1] = value:has_error() and vim.trim(node_text)
+        or M.parse_value(value, src)
+      ir.params.raw = ir.params.raw .. node_text
+    end
   end
+  ir.params.raw = vim.trim(ir.params.raw)
   return ir
 end
 --
@@ -161,10 +178,7 @@ end
 ---@param node TSNode
 ---@param src string
 M.parse_keyword = function(node, src)
-  local keyword_child = assert(node:field("keyword")[1])
-  local value_child = assert(node:field("value")[1])
-  local params_ir = M.parse_params(value_child, src)
-
+  local params_ir = M.parse_params(assert(node:field("value")[1]), src)
   if node:child(2):type() == "ERROR" then
     -- happens in keyword=,paramtable.insert(params_ir, 1, "")2
     table.insert(params_ir, 1, "")
@@ -173,7 +187,7 @@ M.parse_keyword = function(node, src)
 
   ---@type hyprtolua.ir.Keyword
   return {
-    keyword = get_node_text(keyword_child, src),
+    keyword = get_node_text(assert(node:field("keyword")[1]), src),
     params = params_ir,
   }
 end
@@ -261,11 +275,12 @@ M.parse_arguments = function(node, src)
   end
   return ir
 end
---
+
 --     window_rule: ($) => seq($.name, optional($.arguments)),
 ---@class (exact) hyprtolua.ir.WindowRule
 ---@field name string
 ---@field arguments hyprtolua.ir.Arguments
+---@field raw string
 
 ---@param node TSNode
 ---@param src string
@@ -277,6 +292,7 @@ M.parse_windowrule = function(node, src)
   return {
     name = get_node_text(name_child, src),
     arguments = M.parse_arguments(arguments_child, src),
+    raw = get_node_text(node, src),
   }
 end
 --
@@ -293,7 +309,7 @@ M.parse_rules = function(node, src)
   for _, window_rule_child in ipairs(window_rule_children) do
     ir[#ir + 1] = M.parse_windowrule(window_rule_child, src)
   end
-  return {}
+  return ir
 end
 --
 --     exec: ($) =>
@@ -332,13 +348,13 @@ M.parse_exec = function(node, src)
   local variant_node = assert(node:child(0))
   local rules
   local str
-  local child2 = assert(node:child(2))
-  local child3 = assert(node:child(3))
-  if child2:type() == "rules" then
-    rules = M.parse_rules(child2, src)
-    str = get_node_text(child3, src)
+  local named0 = assert(node:named_child(0))
+  local named1 = node:named_child(1)
+  if named0:type() == "rules" then
+    rules = M.parse_rules(named0, src)
+    str = get_node_text(assert(named1), src)
   else
-    str = get_node_text(child2, src)
+    str = get_node_text(named0, src)
   end
   ---@type hyprtolua.ir.Exec
   return {
@@ -528,12 +544,13 @@ M.parse_gradient = function(node, src)
   for child in node:iter_children() do
     local childtype = child:type()
     if childtype == "color" then
-      ir[#ir + 1] = M.parse_color(node, src)
+      ir[#ir + 1] = M.parse_color(child, src)
     elseif childtype == "angle" then
-      local angle_grandchild = assert(child:child(0))
+      local child_text = get_node_text(child, src)
+      local angle_part = child_text:sub(1, -4)
       ---@type hyprtolua.ir.Angle
       local angle_ir = {
-        deg = tonumber(get_node_text(angle_grandchild, src)) --[[@as integer]],
+        deg = tonumber(angle_part) --[[@as integer]],
       }
       ir.angle = angle_ir
     else
@@ -714,7 +731,10 @@ end
 ---@class (exact) hyprtolua.ir.Variable
 ---@field variable_name string
 
----@class hyprtolua.ir.VariableMetatable : metatable
+---@class hyprtolua.Internal.Metatable : metatable
+---@field __toluacode fun(t: table):string
+
+---@type hyprtolua.Internal.Metatable
 local variable_mt = {
   ---@param ir hyprtolua.ir.Variable
   __toluacode = function(ir)

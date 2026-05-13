@@ -11,8 +11,9 @@ local Generator = {}
 function Generator:new()
   local o = {}
   setmetatable(o, self)
-  o.chunks = {}
   self.__index = self
+
+  o.chunks = {}
   return o
 end
 
@@ -24,10 +25,30 @@ function Generator:exec_toluacode(irs, variant)
   ---@type string[]
   local exec_cmd_lines = {}
   for _, ir in ipairs(irs) do
-    exec_cmd_lines[#exec_cmd_lines + 1] = ("%shl.exec_cmd(%s)"):format(
-      pretty.indent(1),
-      toluacode(ir.command)
-    )
+    ---@type HL.WindowRuleSpec
+    if ir.rules then
+      local window_rule_spec = {}
+      local keyorder = {}
+      for _, rule in ipairs(ir.rules) do
+        keyorder[#keyorder + 1] = rule.name
+        if #rule.arguments == 0 then
+          window_rule_spec[rule.name] = true
+        else
+          window_rule_spec[rule.name] = table.concat(rule.arguments, " ")
+        end
+      end
+      migrate.window_rule(window_rule_spec)
+      exec_cmd_lines[#exec_cmd_lines + 1] = ("%shl.exec_cmd(%s, %s)"):format(
+        pretty.indent(1),
+        toluacode(ir.command),
+        pretty.tbl_toluacode(window_rule_spec, keyorder)
+      )
+    else
+      exec_cmd_lines[#exec_cmd_lines + 1] = ("%shl.exec_cmd(%s)"):format(
+        pretty.indent(1),
+        toluacode(ir.command)
+      )
+    end
   end
 
   ---@type HL.EventName
@@ -98,11 +119,14 @@ function Generator:config_toluachunks(config_ir)
   self.chunks = {}
   ---@type table<string, hyprtolua.ir.DeclarationValue>
   self.variables = {}
+  ---@type table<string, string>
+  self.old_varnames = {}
   local chunks = self.chunks
   ---@type string?
   local submap = nil
   for i = 1, #config_ir do
     local ir = config_ir[i]
+    local chunk = ""
     if ir.command then
       local execs_of_same_variant = { ir }
       ---@cast ir hyprtolua.ir.Exec
@@ -110,26 +134,23 @@ function Generator:config_toluachunks(config_ir)
         table.insert(execs_of_same_variant, ir[i + 1])
         i = i + 1
       end
-      chunks[#chunks + 1] = Generator:exec_toluacode(execs_of_same_variant, ir.variant)
+      chunk = self:exec_toluacode(execs_of_same_variant, ir.variant)
     elseif ir.comment then
       ---@cast ir hyprtolua.ir.Comment
-      chunks[#chunks + 1] = "--" .. ir.comment
+      chunk = "--" .. ir.comment
     elseif ir.params then
       ---@cast ir hyprtolua.ir.Keyword
-      local chunk
       if ir.keyword == "submap" then
         submap, chunk = parse_submap(ir, submap)
       else
-        chunk = Generator:keyword_toluacode(ir)
+        chunk = self:keyword_toluacode(ir)
         if submap then
           chunk = indent_str(chunk, 1)
         end
       end
-
-      chunks[#chunks + 1] = chunk
     elseif ir.section_name then
       ---@cast ir hyprtolua.ir.Section
-      chunks[#chunks + 1] = Generator:section_toluacode(ir)
+      chunk = self:section_toluacode(ir)
     elseif ir.source then
       local path_to_source = vim.fs.normalize(ir.source)
       local require_path
@@ -138,24 +159,27 @@ function Generator:config_toluachunks(config_ir)
         require_path = path_from_config_dir:gsub("/", "."):gsub("%.conf$", "")
       end
       if require_path then
-        chunks[#chunks + 1] = ("require(%s)"):format(toluacode(require_path))
+        chunk = ("require(%s)"):format(toluacode(require_path))
       else
-        chunks[#chunks + 1] = ("-- require(%s) -- hyprlang-to-lua: could not convert this path to require() equivalent"):format(
+        chunk = ("-- require(%s) -- hyprlang-to-lua: could not convert this path to require() equivalent"):format(
           toluacode(ir.source)
         )
       end
     elseif ir.declared_name then
       ---@cast ir hyprtolua.ir.Declaration
       local varname, value = migrate.variable_name(ir.declared_name), ir.value
+      self.old_varnames[ir.declared_name] = varname
       if not self.variables[varname] then
-        chunks[#chunks + 1] = ("local %s = %s"):format(varname, toluacode(value))
+        chunk = ("local %s = %s"):format(varname, toluacode(value))
       else
-        chunks[#chunks + 1] = ("%s = %s"):format(varname, toluacode(value))
+        chunk = ("%s = %s"):format(varname, toluacode(value))
       end
       self.variables[varname] = ir.value
-    else
+    end
+    if not chunk then
       error("Unhandled ir in config: " .. vim.inspect(ir))
     end
+    chunks[#chunks + 1] = chunk
   end
   if submap then
     chunks[#chunks + 1] = "end)"
@@ -166,6 +190,7 @@ end
 ---@param t table
 ---@param keys any[]k
 ---@param value any
+---@return any previous
 local tbl_set = function(t, keys, value)
   local node = t
   for i = 1, #keys - 1 do
@@ -178,45 +203,49 @@ local tbl_set = function(t, keys, value)
   end
 
   -- Set the last value
-  node[keys[#keys]] = value
+  local last_key = keys[#keys]
+  local prev = node[last_key]
+  node[last_key] = value
+  return prev
 end
 
 ---@param section_ir hyprtolua.ir.Section
 ---@return table section
 ---@return any[] section_keyorder
-local function section_to_tbl_and_keys(section_ir)
+function Generator:_section_to_tbl_and_keys(section_ir)
   local tbl = {}
-  local parts = {}
   local section_keyorder = {}
   for _, ir in ipairs(section_ir) do
-    local k, v
+    local keys = {}
+    local v
     if ir.section_name then
       ---@cast ir hyprtolua.ir.Section
-      k = ir.section_name
-      v, _ = section_to_tbl_and_keys(ir)
+      vim.list_extend(keys, { ir.section_name, ir.device })
+      v, _ = self:_section_to_tbl_and_keys(ir)
     elseif ir.keyword then
       ---@cast ir hyprtolua.ir.Keyword
-      k = ir.keyword
-      local first_param = ir.params[1]
-      if first_param ~= nil then
-        v = first_param
+      vim.list_extend(keys, vim.split(ir.keyword, "[:%.]"))
+      if #ir.params == 1 then
+        v = ir.params[1]
+      elseif #ir.params > 1 then
+        v = { unpack(ir.params) }
       else
-        first_param = ir.params.raw
+        v = ir.params.raw
       end
     else
       error("TODO: unparsed ir in section: " .. pretty.toluacode(ir))
     end
 
-    k = utils.tosnakecase(k)
+    keys = vim.iter(keys):map(utils.tosnakecase):totable()
 
-    local part = {}
-    local keys = vim.split(k, ".", { plain = true })
-    tbl_set(part, keys, v)
-    parts[#parts + 1] = part
+    local prev = tbl_set(tbl, keys, v)
+    if prev ~= nil and prev ~= v then
+      self.chunks[#self.chunks + 1] = ("-- hyprlang-to-lua: excluding %s = %s from below, as Lua does not allow duplicate keys"):format(
+        table.concat(keys, "."),
+        prev
+      )
+    end
     section_keyorder[#section_keyorder + 1] = keys[1]
-  end
-  if #parts > 0 then
-    tbl = vim.tbl_deep_extend("force", {}, unpack(parts))
   end
   return tbl, section_keyorder
 end
@@ -226,19 +255,19 @@ end
 function Generator:section_toluacode(ir)
   if ir.section_name == "monitorv2" then
     ---@type HL.MonitorSpec
-    local monitor_opts, keys = section_to_tbl_and_keys(ir)
+    local monitor_opts, keys = self:_section_to_tbl_and_keys(ir)
     if monitor_opts.scale then
       -- Convert to a string
       monitor_opts.scale = tostring(monitor_opts.scale)
     end
     return ([[hl.monitor(%s)]]):format(pretty.tbl_toluacode(monitor_opts, keys))
   elseif ir.section_name == "windowrule" then
-    local window_rule_spec, keys = section_to_tbl_and_keys(ir)
+    local window_rule_spec, keys = self:_section_to_tbl_and_keys(ir)
     migrate.window_rule(window_rule_spec)
     return ([[hl.window_rule(%s)]]):format(pretty.tbl_toluacode(window_rule_spec, keys))
   end
   local indent1 = pretty.indent(1)
-  local config, keys = section_to_tbl_and_keys(ir)
+  local config, keys = self:_section_to_tbl_and_keys(ir)
   return ([[
 hl.config({
 %s%s = %s
@@ -253,31 +282,24 @@ end
 ---key:val, key val, or subkey1:subkey2 val
 ---If the parameter matches none of the above formats, returns the string itself.
 ---@param param_str string
----@return table|string val
----@return string? key
-local param_string_to_val = function(param_str)
+---@return string val
+---@return string[]? keys
+function Generator:_param_string_to_val(param_str)
   local space_idx = param_str:find(" ", 1, true)
-  local colon_idx = param_str:find(":", 1, true)
   if not space_idx then
-    if not colon_idx then
+    if not param_str:find(":") then
+      -- val
       return param_str
     end
-    local key = param_str:sub(1, colon_idx - 1)
-    local value = param_str:sub(colon_idx + 1)
-    return value, key
+    -- key:val
+    local key, value = unpack(vim.split(param_str, ":", { plain = true, trimempty = true }))
+    return value, { key }
   end
 
-  local key = param_str:sub(1, space_idx - 1)
-  colon_idx = key:find(":", 1, true)
-  local value = param_str:sub(space_idx + 1)
-  if colon_idx then
-    local subkey1 = key:sub(1, colon_idx - 1)
-    local subkey2 = key:sub(colon_idx + 1)
-    return {
-      [subkey2] = value,
-    }, subkey1
-  end
-  return value, key
+  local key, value = param_str:sub(1, space_idx - 1), param_str:sub(space_idx + 1)
+
+  -- subkey1:subkey2 val or key val
+  return value, vim.split(key, ":", { plain = true })
 end
 
 ---Takes a table and merges in parameters from (start or 1) until (j or #params)
@@ -286,32 +308,32 @@ end
 ---@param i integer?
 ---@param j integer?
 ---@return any[] keys
+---@return any[] unmerged_values
 function Generator:_merge_params(tbl, params, i, j)
-  local keys = {}
+  local keys_by_param_order = {}
+  local unmerged = {}
   for idx = i or 1, j or #params do
     local param = params[idx]
-    if type(param) == "string" then
-      local val, key = param_string_to_val(param)
-      assert(key, "Expected parameter to have a key" .. param)
-      key = utils.tosnakecase(key)
-      keys[#keys + 1] = key
-      if tbl[key] == nil then
-        ---@diagnostic disable-next-line: assign-type-mismatch
-        tbl[key] = val
-      elseif type(val) == "table" then
-        ---@diagnostic disable-next-line: assign-type-mismatch
-        tbl[key] = vim.tbl_deep_extend("force", tbl[key], val)
-      else
-        self.chunks[#self.chunks + 1] = ("-- hyprlang-to-lua: for below, did not merge in key-value pair: %s, %s"):format(
-          key,
-          val
-        )
-      end
+    if type(param) ~= "string" then
+      unmerged[#unmerged + 1] = param
     else
-      error("Could not parse parameter" .. param)
+      local val, keys = self:_param_string_to_val(param)
+      if not keys then
+        unmerged[#unmerged + 1] = val
+      else
+        vim.iter(keys):map(utils.tosnakecase):totable()
+        keys_by_param_order[#keys_by_param_order + 1] = keys
+        local prev = tbl_set(tbl, keys, val)
+        if prev ~= nil then
+          self.chunks[#self.chunks + 1] = ("-- hyprlang-to-lua: excluding %s = %s from below, as Lua does not allow duplicate keys"):format(
+            table.concat(keys, "."),
+            prev
+          )
+        end
+      end
     end
   end
-  return keys
+  return keys_by_param_order, unmerged
 end
 
 ---@type table<string, HL.BindOptions>
@@ -362,7 +384,9 @@ function Generator:keyword_toluacode(ir)
     }
     local keys_by_merge_order = self:_merge_params(ws_rule, ir.params, 2)
     migrate.workspace_rule(ws_rule, keys_by_merge_order)
-    return ("hl.workspace_rule(%s)"):format(pretty.tbl_toluacode(ws_rule, keys_by_merge_order))
+    return ("hl.workspace_rule(%s)"):format(
+      pretty.tbl_toluacode(ws_rule, vim.list_extend({ "workspace" }, keys_by_merge_order))
+    )
   elseif keyword == "windowrule" then
     ---@type HL.WindowRuleSpec
     local window_rule_spec = {}
@@ -411,19 +435,13 @@ function Generator:keyword_toluacode(ir)
         raw_params:match("^([^,]*),%s*([^,]*),%s*([^,]+)%s*,?%s*(.*)")
     end
 
-    local lhs, mod_varnames = migrate.bind_lhs(modstring, key)
+    local lhs_code = migrate.bind_lhs_code(modstring, key)
 
     local dispatcher_code = require("hyprlang-to-lua.luagen.dispatchers").dispatcher_toluacode(
       dispatcher,
       dispatcher_params,
-      lhs
+      lhs_code:find("mouse") ~= nil
     )
-
-    local lhs_code = toluacode(lhs)
-    if #mod_varnames > 0 then
-      local variable_code = table.concat(mod_varnames, [[ .. " + " .. ]])
-      lhs_code = ("%s .. %s"):format(variable_code, toluacode(" + " .. lhs))
-    end
 
     if vim.tbl_isempty(bind_opts) then
       return ("hl.bind(%s, %s)"):format(lhs_code, dispatcher_code)
@@ -445,6 +463,48 @@ function Generator:keyword_toluacode(ir)
     local layer_rule = {}
     local keys_by_merge_order = self:merge_params(layer_rule, ir.params)
     return ("hl.layer_rule(%s)"):format(pretty.tbl_toluacode(layer_rule, keys_by_merge_order))
+  elseif keyword == "monitor" then
+    local name, mode, position, scale = unpack(ir.params)
+    ---@type HL.MonitorSpec
+    local monitor_spec = {
+      output = name,
+      mode = mode,
+      position = position,
+      scale = scale,
+    }
+    return ("hl.monitor(%s)"):format(
+      pretty.tbl_toluacode(monitor_spec, { "name", "mode", "position", "scale" })
+    )
+  elseif vim.startswith(ir.keyword, "gesture") then
+    ---@type HL.GestureSpec
+    local gesture = {}
+
+    local end_of_required_args = -1
+    for i, param in ipairs(ir.params) do
+      if not gesture.fingers then
+        assert(type(param) == "number")
+        gesture.fingers = param
+      elseif not gesture.direction then
+        assert(type(param) == "string")
+        gesture.direction = param
+      else
+        assert(type(param) == "string")
+        local val, keys = self:_param_string_to_val(param)
+        if keys then
+          local key = unpack(keys)
+          if key == "mod" then
+            gesture.mods = val
+          end
+        else
+        end
+      end
+    end
+
+    return ("hl.gesture(%s)"):format(pretty.tbl_toluacode(gesture, {
+      "fingers",
+      "direction",
+      "action",
+    }))
   end
   error("TODO keyword:" .. toluacode(ir))
 end

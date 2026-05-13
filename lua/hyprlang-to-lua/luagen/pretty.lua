@@ -251,7 +251,7 @@ M.toluacode = function(val, indent0, column_width)
     return tostring(val)
   end
 
-  ---@type metatable|hyprtolua.ir.VariableMetatable
+  ---@type metatable|hyprtolua.Internal.Metatable
   local mt = getmetatable(val)
   if mt then
     if mt.__toluacode then
@@ -293,7 +293,7 @@ M.tbl_toluacode = function(t, keyorder, indent0, column_width)
   table.sort(original_keys, sorted_strings_then_numbers)
   indent0 = indent0 or ""
   column_width = column_width or M.opts.column_width
-  return tbl_tolua(t, vim.list_extend(original_keys, keyorder), indent0, column_width)
+  return tbl_tolua(t, vim.list_extend({ unpack(keyorder) }, original_keys), indent0, column_width)
 end
 
 ---@generic T
