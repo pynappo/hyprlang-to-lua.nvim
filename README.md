@@ -46,37 +46,33 @@ In general, the most common configuration segments should translate properly. Pl
 
 Notably:
 
-- Use of variables in keybinds (i.e. `$mainMod`) is implemented. Options that are assigned a single variable should work
-as well. String interpolation (i.e. strings combined with variables) is only implemented for the keybind usecase at the
-time of writing. Variable arithmetic is likely a non-goal due to tree-sitter-hyprlang limtations and lack of actual
-usage.
+- Conversion of hyprlang variables in keybinds (e.g. `$mainMod`) is implemented. Options that are assigned a single
+variable should convert as well. String interpolation (i.e. strings combined with variables) is only implemented for the
+keybind usecase at the time of writing.
 - Most common keywords are implemented (execs, window rules, monitors, animations and curves, etc.).
-- A great deal of effort was put into translating dispatchers and their options properly, so vast majority of binds
-should work.
+- Most, if not all dispatchers should translate properly.
 - Source statements: Should work if the source file being pointed to is under the `hypr/` directory, will be commented
 out otherwise.
 - Rules with multiple matchers of the same type (e.g. two `match:class` rules in a window rule) will keep only one of
 them. hyprlang-to-lua will leave comments about this, but it won't automatically generate the extra copy of the window
 rule for you.
+- There's some amount of effort to keep the generated Lua looking reasonable (in terms of line length, table formatting,
+  indentation, etc.)
 
 ## TODOs
 
 - Gestures have very minimal processing on the parameters for the dispatchers, will need to go over all the actions and
 implement fixes on a per-action basis.
 - Expose indentation settings.
+- (Not sure:) Hyprland's auto-generated lua stubs suck - most things are loosely typed, and many tables are missing
+fields only found on the wiki. It would be tedious but it'd probably be useful to override the classes with
+significantly better types to help Neovim users, and it would be cool to upstream the work.
 
 ## Non-goals
-- There's some amount of effort to keep the generated Lua looking reasonable (in terms of line length, table formatting,
-  indentation, etc.), but it is never going to be as good as an actual formatter like
-[StyLua](https://github.com/JohnnyMorganz/StyLua).
-- The only current optimization done to the generated Lua is combining similar exec commands (e.g. blocks of exec-once)
-  into a single hl.on call.
-
-## Possible goals
-
-- Hyprland's auto-generated lua stubs suck - most things are loosely typed, and many tables are missing fields only
-found on the wiki. It would be tedious but it'd probably be useful to override the classes with significantly better
-types to help Neovim users, and it would be cool to upstream the work.
+- Formatting is never going to be as good as an actual formatter like [StyLua](https://github.com/JohnnyMorganz/StyLua).
+- Any lua optimizations significantly more complicated than the current optimization pass: just combining similar exec
+commands (e.g. blocks of exec-once) into a single hl.on call.
+- (maybe up for debate) Supporting variable arithmetic - lack of actual usage and just annoying to implement.
 
 # Developing
 
