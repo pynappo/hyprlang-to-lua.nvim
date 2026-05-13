@@ -556,7 +556,7 @@ M.parse_gradient = function(node, src)
   end
   return ir
 end
---
+
 --     number_tuple: ($) => seq($.number, repeat(seq(",", $.number))),
 --
 --     display: ($) => seq($.position, optional(seq("@", $.number))),

@@ -265,7 +265,7 @@ hl.config({
 })]]):format(
     indent1,
     pretty.tokeystring(ir.section_name),
-    pretty.tbl_toluacode(config, keys, indent1)
+    pretty.tbl_toluacode(config, keys, indent1, -1)
   )
 end
 
