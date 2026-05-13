@@ -6,7 +6,7 @@ local utils = require("tests.utils")
 local T = new_set()
 
 T["works with a basic monitor/workspace config"] = function()
-  local localconf_lines = hyprtolua_utils.readlines("testdata/basic/hyprland.conf")
+  local localconf_lines = hyprtolua_utils.readlines("testdata/monitors/hyprland.conf")
   local localconf_str = table.concat(localconf_lines, "\n")
   local converted = hyprtolua.convert(localconf_str, true)
   utils.expect_lines_match({

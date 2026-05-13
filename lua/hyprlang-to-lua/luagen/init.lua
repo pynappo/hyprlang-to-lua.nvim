@@ -1,5 +1,6 @@
 local pretty = require("hyprlang-to-lua.luagen.pretty")
 local utils = require("hyprlang-to-lua.utils")
+local luagen_utils = require("hyprlang-to-lua.luagen.utils")
 local migrate = require("hyprlang-to-lua.luagen.migrate")
 local toluacode = pretty.toluacode
 local Generator = {}
@@ -66,16 +67,6 @@ function Generator:exec_toluacode(irs, variant)
 hl.on(%s, function()
 %s
 end)]]):format(toluacode(event), exec_cmds_str)
-end
-
----@param s string
----@param additional_levels integer
----@return string
----@nodiscard
-local indent_str = function(s, additional_levels)
-  local additional_indent = pretty.indent(additional_levels)
-  local indented = (additional_indent .. s):gsub("\n", "\n" .. additional_indent)
-  return indented
 end
 
 ---@param ir hyprtolua.ir.Keyword
@@ -145,7 +136,7 @@ function Generator:config_toluachunks(config_ir)
       else
         chunk = self:keyword_toluacode(ir)
         if submap then
-          chunk = indent_str(chunk, 1)
+          chunk = pretty.add_indent(chunk, 1)
         end
       end
     elseif ir.section_name then
@@ -476,44 +467,84 @@ function Generator:keyword_toluacode(ir)
       pretty.tbl_toluacode(monitor_spec, { "name", "mode", "position", "scale" })
     )
   elseif vim.startswith(ir.keyword, "gesture") then
-    ---@type HL.GestureSpec
-    local gesture = {}
+    local fingers, direction, mods, scale, action
 
     local end_of_required_args = -1
     for i, param in ipairs(ir.params) do
-      if not gesture.fingers then
+      if not fingers then
         assert(type(param) == "number")
-        gesture.fingers = param
-      elseif not gesture.direction then
+        fingers = param
+      elseif not direction then
         assert(type(param) == "string")
-        gesture.direction = param
+        direction = param
       else
         assert(type(param) == "string")
         local val, keys = self:_param_string_to_val(param)
         if keys then
           local key = keys[1]
           if key == "mod" then
-            gesture.mods = table.concat(migrate.find_mods(val), " + ")
+            mods = table.concat(migrate.find_mods(val), " + ")
           elseif key == "scale" then
-            gesture.scale = tonumber(val)
+            scale = tonumber(val)
           end
         else
-          gesture.action = val
+          action = val
           end_of_required_args = i
         end
       end
     end
 
-    for i = end_of_required_args, #ir.params do
-      local param = ir.params[i]
+    ---@type HL.GestureSpec
+    local gesture = {
+      fingers = fingers,
+      direction = direction,
+      mods = mods,
+      scale = scale,
+      action = action,
+    }
+
+    if ir.keyword:find("p", 1, true) then
+      gesture.disable_inhibit = true
+    end
+
+    if gesture.action == "dispatcher" then
+      local dispatcher = assert(ir.params[end_of_required_args + 1])
+      assert(
+        type(dispatcher) == "string",
+        "expected dispatcher in gesture after 'dispatcher' action"
+      )
+      local raw_dispatcher_params = table.concat(ir.params, ", ", end_of_required_args + 2)
+      local dispatcher_code = require("hyprlang-to-lua.luagen.dispatchers").dispatcher_toluacode(
+        dispatcher,
+        raw_dispatcher_params,
+        false
+      )
+      ---@diagnostic disable-next-line: assign-type-mismatch
+      gesture.action =
+        luagen_utils.wrap_raw_luacode(("function() hl.dispatch(%s) end"):format(dispatcher_code))
+    else
+      for i = end_of_required_args, #ir.params do
+        local param = ir.params[i]
+        assert(type(param) == "string")
+        local v, keys = self:_param_string_to_val(param)
+        if keys then
+          local prev = tbl_set(gesture, keys, v)
+          if prev ~= nil and prev ~= v then
+            self.chunks[#self.chunks + 1] = ("-- hyprlang-to-lua: excluding %s = %s from below, as Lua does not allow duplicate keys"):format(
+              table.concat(keys, "."),
+              prev
+            )
+          end
+        end
+      end
     end
 
     return ("hl.gesture(%s)"):format(pretty.tbl_toluacode(gesture, {
       "fingers",
       "direction",
-      "action",
       "mods",
       "scale",
+      "action",
     }))
   end
   error("TODO keyword:" .. toluacode(ir))

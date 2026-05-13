@@ -1,7 +1,6 @@
 local M = {}
 
----Based on StyLua opts, adjusted to the settings on the hyprland wiki.
----@class hyprtolua.FormatOpts
+---Based on StyLua opts, adjusted to the settings on the hyprland wiki. @class hyprtolua.FormatOpts
 M.opts = {
   syntax = "All",
   column_width = 80, -- Adjusted to 80
@@ -309,6 +308,21 @@ M.merge_toluacode = function(parts, indent0, column_width)
   end
   local merged = vim.tbl_deep_extend("force", {}, unpack(parts))
   return M.tbl_toluacode(merged, keyorder, indent0, column_width)
+end
+
+---@param s string
+---@param additional_levels integer
+---@param exclude_first boolean?
+---@return string
+---@nodiscard
+M.add_indent = function(s, additional_levels, exclude_first)
+  local additional_indent = M.indent(additional_levels)
+  local indented = s
+  if not exclude_first then
+    indented = additional_indent .. s
+  end
+  indented = s:gsub("\n", "\n" .. additional_indent)
+  return indented
 end
 
 return M

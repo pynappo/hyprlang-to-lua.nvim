@@ -36,10 +36,9 @@ require('hyprlang-to-lua').convert_to_stdout_then_quit('$XDG_CONFIG_HOME/hypr/hy
 
 ## Capabilities
 
-- Variables (as in config options): Most common options should translate properly. Gradients are not currently
-translated properly.
+- Variables (as in config options): Most common options should translate properly.
 - Variables (as in hyprlang variables): Current support is for options that take colors and for use in binds.
-- Keywords: most common ones are implemented (exec and variants, window rules, monitors, etc.).
+- Keywords: Most common ones are implemented (exec and variants, window rules, monitors, etc.).
 - Binds: A great deal of effort was put into making the bind translation work properly for all dispatchers. It's
 probably not perfect but should just work for most binds.
 - Source statements: Should work in most common cases, will be commented out if it doesn't work.

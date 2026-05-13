@@ -22,6 +22,7 @@ local tokens_mt = {
   end,
 }
 
+---@type hyprtolua.Internal.Metatable
 local token_mt = {
   ---@param tbl hyprtolua.VariableToken
   __toluacode = function(tbl)
@@ -59,6 +60,21 @@ M.totokens = function(str)
 
   setmetatable(parts, tokens_mt)
   return parts
+end
+
+---@type hyprtolua.Internal.Metatable
+---@return table
+local rawluacode_mt = {
+  ---@param self hyprtolua.Internal.RawLuaCodeWrapper
+  __toluacode = function(self)
+    return self
+  end,
+}
+M.wrap_raw_luacode = function(str)
+  ---@class hyprtolua.Internal.RawLuaCodeWrapper
+  local wrapper = { rawluacode = str }
+  setmetatable(str, rawluacode_mt)
+  return wrapper
 end
 
 return M

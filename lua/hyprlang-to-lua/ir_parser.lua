@@ -531,27 +531,25 @@ end
 --
 --     gradient: ($) => seq($.color, repeat($.color), optional($.angle)),
 ---@class (exact) hyprtolua.ir.Gradient
----@field [integer] hyprtolua.ir.Color
----@field angle hyprtolua.ir.Angle?
+---@field colors hyprtolua.ir.Color[]
+---@field angle integer? degrees
 
 ---@param node TSNode
 ---@param src string
 ---@return hyprtolua.ir.Gradient
 M.parse_gradient = function(node, src)
   ---@type hyprtolua.ir.Gradient
-  local ir = {}
+  local ir = {
+    colors = {},
+  }
   for child in node:iter_children() do
     local childtype = child:type()
     if childtype == "color" then
-      ir[#ir + 1] = M.parse_color(child, src)
+      ir.colors[#ir.colors + 1] = M.parse_color(child, src)
     elseif childtype == "angle" then
       local child_text = get_node_text(child, src)
       local angle_part = child_text:sub(1, -4)
-      ---@type hyprtolua.ir.Angle
-      local angle_ir = {
-        deg = tonumber(angle_part) --[[@as integer]],
-      }
-      ir.angle = angle_ir
+      ir.angle = assert(tonumber(angle_part))
     else
       error("Invalid gradient node child: " .. childtype)
     end
@@ -623,8 +621,6 @@ end
 ---@field hex string
 --
 --     angle: () => seq(/[0-9]{1,3}/, "deg"),
----@class (exact) hyprtolua.ir.Angle
----@field deg integer
 --
 --     mod: () =>
 --       choice(
