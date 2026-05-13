@@ -26,7 +26,8 @@ migrate.window_rule = function(rule)
   ---@diagnostic disable-next-line: undefined-field
   local workspace = rule.workspace
   if type(workspace) == "table" then
-    return table.concat(workspace, " ")
+    ---@diagnostic disable-next-line: inject-field
+    rule.workspace = table.concat(workspace, " ")
   end
 
   ---@diagnostic disable-next-line: inject-field

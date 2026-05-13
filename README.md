@@ -67,7 +67,7 @@ implement fixes on a per-action basis.
 
 ## Non-goals
 - There's some amount of effort to keep the generated Lua looking reasonable (in terms of line length, table formatting,
-  indentation, .), but it is never going to be as good as an actual formatter like
+  indentation, etc.), but it is never going to be as good as an actual formatter like
 [StyLua](https://github.com/JohnnyMorganz/StyLua).
 - The only current optimization done to the generated Lua is combining similar exec commands (e.g. blocks of exec-once)
   into a single hl.on call.
