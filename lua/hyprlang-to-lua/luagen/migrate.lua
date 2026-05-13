@@ -23,6 +23,12 @@ migrate.window_rule = function(rule)
     rule.idle_inhibit = idle_inhibit and "always" or "none"
   end
 
+  ---@diagnostic disable-next-line: undefined-field
+  local workspace = rule.workspace
+  if type(workspace) == "table" then
+    return table.concat(workspace, " ")
+  end
+
   ---@diagnostic disable-next-line: inject-field
   rule.border_size = tonumber(rule.border_size)
   ---@diagnostic disable-next-line: inject-field
