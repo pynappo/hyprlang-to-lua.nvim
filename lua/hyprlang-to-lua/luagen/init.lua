@@ -491,11 +491,14 @@ function Generator:keyword_toluacode(ir)
         assert(type(param) == "string")
         local val, keys = self:_param_string_to_val(param)
         if keys then
-          local key = unpack(keys)
+          local key = keys[1]
           if key == "mod" then
             gesture.mods = val
+          elseif key == "scale" then
+            gesture.scale = tonumber(val)
           end
         else
+          gesture.action = val
         end
       end
     end

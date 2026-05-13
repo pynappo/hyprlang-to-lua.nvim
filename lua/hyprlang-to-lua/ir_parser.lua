@@ -385,7 +385,6 @@ end
 ---|hyprtolua.ir.Vec2
 ---|hyprtolua.ir.Display
 ---|hyprtolua.ir.Gradient
----|hyprtolua.ir.Mod
 ---|hyprtolua.ir.Keys
 ---|string
 ---|hyprtolua.ir.Variable
@@ -427,7 +426,7 @@ M.parse_value = function(node, src)
     error("Invalid value type: " .. utils.inspect_tsnode(node, src))
   end
 end
---
+
 --     boolean: () => choice("true", "false", "on", "off", "yes", "no"),
 ---@param node TSNode
 ---@param src string
@@ -644,26 +643,10 @@ end
 --         "MOD5",
 --         "TAB",
 --       ),
----@alias hyprtolua.ir.Mod
----|"SHIFT"
----|"CAPS"
----|"CTRL"
----|"CONTROL"
----|"ALT"
----|"ALT_L"
----|"MOD2"
----|"MOD3"
----|"SUPER"
----|"WIN"
----|"LOGO"
----|"MOD4"
----|"MOD5"
----|"TAB"
---
 --     keys: ($) => choice(seq($.mod, $.mod), seq($.variable, $.mod)),
 ---@class (exact) hyprtolua.ir.Keys
----@field [1] hyprtolua.ir.Mod|hyprtolua.ir.Variable
----@field [2] hyprtolua.ir.Mod
+---@field [1] string|hyprtolua.ir.Variable
+---@field [2] string
 
 ---@param node TSNode
 ---@param src string
@@ -693,7 +676,7 @@ end
 ---@param modnode TSNode
 ---@param errnode TSNode
 ---@param src string
----@return hyprtolua.ir.Mod?
+---@return string?
 local reparse_mod_with_error = function(modnode, errnode, src)
   if modnode:type() ~= "mod" then
     return nil
