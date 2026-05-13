@@ -1,8 +1,11 @@
-A plugin to assist in the Hyprland 0.55 migration from hyprlang to Lua, using Neovim's built-in Treesitter parsing. Made
-for fun, conversion is done on a best-effort basis.
+This plugin assists in the Hyprland 0.55 migration from hyprlang to Lua, using Neovim's built-in Treesitter parsing. Made
+for fun (and to convert my config over).
 
-The idea is to provide near-instant conversion that helps users get 90% of the way to a fully working Lua
+The idea is to provide near-instant conversion on a best-effort basis to help users get 90% of the way to a fully converted Lua
 configuration, where they can then use LLMs and/or manual editing to finish the rest.
+
+<img width="1280" height="1002" alt="image" src="https://github.com/user-attachments/assets/ea2b6d07-b645-40c3-b46c-5fe625acf4d8" />
+
 
 # Installation
 
