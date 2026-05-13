@@ -251,11 +251,11 @@ function Generator:section_toluacode(ir)
       -- Convert to a string
       monitor_opts.scale = tostring(monitor_opts.scale)
     end
-    return ([[hl.monitor(%s)]]):format(pretty.tbl_toluacode(monitor_opts, keys))
+    return ([[hl.monitor(%s)]]):format(pretty.tbl_toluacode(monitor_opts, keys, nil, -1))
   elseif ir.section_name == "windowrule" then
     local window_rule_spec, keys = self:_section_to_tbl_and_keys(ir)
     migrate.window_rule(window_rule_spec)
-    return ([[hl.window_rule(%s)]]):format(pretty.tbl_toluacode(window_rule_spec, keys))
+    return ([[hl.window_rule(%s)]]):format(pretty.tbl_toluacode(window_rule_spec, keys, nil, -1))
   end
   local indent1 = pretty.indent(1)
   local config, keys = self:_section_to_tbl_and_keys(ir)
