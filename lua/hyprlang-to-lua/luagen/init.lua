@@ -493,20 +493,27 @@ function Generator:keyword_toluacode(ir)
         if keys then
           local key = keys[1]
           if key == "mod" then
-            gesture.mods = val
+            gesture.mods = table.concat(migrate.find_mods(val), " + ")
           elseif key == "scale" then
             gesture.scale = tonumber(val)
           end
         else
           gesture.action = val
+          end_of_required_args = i
         end
       end
+    end
+
+    for i = end_of_required_args, #ir.params do
+      local param = ir.params[i]
     end
 
     return ("hl.gesture(%s)"):format(pretty.tbl_toluacode(gesture, {
       "fingers",
       "direction",
       "action",
+      "mods",
+      "scale",
     }))
   end
   error("TODO keyword:" .. toluacode(ir))
